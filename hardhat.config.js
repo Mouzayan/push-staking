@@ -8,7 +8,6 @@ require("hardhat-gas-reporter");
 require('hardhat-contract-sizer');
 require("@nomicfoundation/hardhat-verify");
 
-
 const { ethers } = require("ethers");
 const { isAddress, getAddress, formatUnits, parseUnits } = ethers.utils;
 
@@ -54,11 +53,11 @@ module.exports = {
   networks: {
     hardhat: {
       allowUnlimitedContractSize: true,
-      // forking: {
-      //   url:
-      //     `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API}`,
-      //     blockNumber: 15917401
-      // },
+      forking: {
+        url:
+          `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API}`,
+          blockNumber: 15917401
+      },
     },
     localhost: {
       url: "http://localhost:8545",
@@ -68,10 +67,10 @@ module.exports = {
       */
     },
 
-  // ETH Network
-    sepolia: {
-      url: `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`,
-      accounts: [process.env.PRIVATE]
+  // // ETH Network
+  //   sepolia: {
+  //     url: `https://sepolia.infura.io/v3/${process.env.INFURA_PROJECT_ID}`,
+  //     accounts: [process.env.PRIVATE]
 
     },
     mainnet: {
@@ -81,134 +80,134 @@ module.exports = {
       },
     },
 
-    // Polygon Chain
-    polygonMumbai: {
-      url: `https://rpc-mumbai.maticvigil.com/`, // <---- YOUR INFURA ID! (or it won't work)
-      accounts: [process.env.PRIVATE]
+    // // Polygon Chain
+    // polygonMumbai: {
+    //   url: `https://rpc-mumbai.maticvigil.com/`, // <---- YOUR INFURA ID! (or it won't work)
+    //   accounts: [process.env.PRIVATE]
 
-    },
-    polygon: {
-      url: `https://polygon-rpc.com/`, // <---- YOUR INFURA ID! (or it won't work)
-      accounts: [process.env.PRIVATE]
+    // },
+    // polygon: {
+    //   url: `https://polygon-rpc.com/`, // <---- YOUR INFURA ID! (or it won't work)
+    //   accounts: [process.env.PRIVATE]
 
-    },
+    // },
 
-    polygonAmoy: {
-      url: `https://rpc-amoy.polygon.technology/`, // <---- YOUR INFURA ID! (or it won't work)
-      accounts:[process.env.PRIVATE],
-    },
+    // polygonAmoy: {
+    //   url: `https://rpc-amoy.polygon.technology/`, // <---- YOUR INFURA ID! (or it won't work)
+    //   accounts:[process.env.PRIVATE],
+    // },
 
-    // BSC Chain
-    bscTestnet: {
-      url: "https://data-seed-prebsc-1-s1.binance.org:8545/",
-      accounts: {
-        mnemonic: mnemonic(),
-      }
-    },
-    bscMainnet: {
-      url: "https://bsc-dataseed1.binance.org/",
-      accounts: [process.env.PRIVATE]
+    // // BSC Chain
+    // bscTestnet: {
+    //   url: "https://data-seed-prebsc-1-s1.binance.org:8545/",
+    //   accounts: {
+    //     mnemonic: mnemonic(),
+    //   }
+    // },
+    // bscMainnet: {
+    //   url: "https://bsc-dataseed1.binance.org/",
+    //   accounts: [process.env.PRIVATE]
 
-    },
+    // },
 
-    // Polygon zkEVM Chain
-    polygonZkEVMTestnet: {
-      url: "https://rpc.cardona.zkevm-rpc.com/",
-      accounts: [process.env.PRIVATE]
+    // // Polygon zkEVM Chain
+    // polygonZkEVMTestnet: {
+    //   url: "https://rpc.cardona.zkevm-rpc.com/",
+    //   accounts: [process.env.PRIVATE]
 
-    },
-    zkEVMMainnet: {
-      url: "https://zkevm-rpc.com	",
-      accounts: [process.env.PRIVATE]
+    // },
+    // zkEVMMainnet: {
+    //   url: "https://zkevm-rpc.com	",
+    //   accounts: [process.env.PRIVATE]
 
-    },
+    // },
 
-    // Optimisim Chain
-    optimismSepolia: {
-      url: "https://sepolia.optimism.io",
-      accounts: [process.env.PRIVATE]
+    // // Optimisim Chain
+    // optimismSepolia: {
+    //   url: "https://sepolia.optimism.io",
+    //   accounts: [process.env.PRIVATE]
 
-    },
-    optimismMainnet: {
-      url: "https://mainnet.optimism.io",
-      accounts: [process.env.PRIVATE]
+    // },
+    // optimismMainnet: {
+    //   url: "https://mainnet.optimism.io",
+    //   accounts: [process.env.PRIVATE]
 
-    },
+    // },
 
-    // Arbitrum Chain
-    arbitrumSepolia: {
-      url: "https://arbitrum-sepolia.blockpi.network/v1/rpc/public",
-      accounts: [process.env.PRIVATE]
-    },
+    // // Arbitrum Chain
+    // arbitrumSepolia: {
+    //   url: "https://arbitrum-sepolia.blockpi.network/v1/rpc/public",
+    //   accounts: [process.env.PRIVATE]
+    // },
 
-    arbitrumMainnet : {
-      url: 'https://arb1.arbitrum.io/rpc',
-      accounts: [process.env.PRIVATE]
-    },
+    // arbitrumMainnet : {
+    //   url: 'https://arb1.arbitrum.io/rpc',
+    //   accounts: [process.env.PRIVATE]
+    // },
 
-    // Linea Chain
-    lineaSepolia: {
-      url: `https://rpc.sepolia.linea.build`,
-      accounts: [process.env.PRIVATE]
+    // // Linea Chain
+    // lineaSepolia: {
+    //   url: `https://rpc.sepolia.linea.build`,
+    //   accounts: [process.env.PRIVATE]
 
-    },
-    lineaMainnet: {
-      url: `https://rpc.linea.build`,
-      accounts: [process.env.PRIVATE]
+    // },
+    // lineaMainnet: {
+    //   url: `https://rpc.linea.build`,
+    //   accounts: [process.env.PRIVATE]
 
-    },
+    // },
 
-    //Fuse Mainnet
-    fuse:{
-      url:"https://rpc.fuse.io",
-      accounts: [process.env.PRIVATE],
-    },
+    // //Fuse Mainnet
+    // fuse:{
+    //   url:"https://rpc.fuse.io",
+    //   accounts: [process.env.PRIVATE],
+    // },
 
-    //Fuse Testnet
-    fuseSpark:{
-      url:"https://rpc.fusespark.io",
-      accounts: [process.env.PRIVATE],
-    },
-    //Shardeum Testnet
-    sphinx:{
-      url: "https://sphinx.shardeum.org/",
-      chainId: 8082,
-      accounts:[process.env.PRIVATE]
-    
-    },
-    //Bera Chain testnet
-      berachainTestnet: {
-      url: "https://artio.rpc.berachain.com/",
-      chainId: 80085,
-      accounts: [process.env.PRIVATE],
-    },
+    // //Fuse Testnet
+    // fuseSpark:{
+    //   url:"https://rpc.fusespark.io",
+    //   accounts: [process.env.PRIVATE],
+    // },
+    // //Shardeum Testnet
+    // sphinx:{
+    //   url: "https://sphinx.shardeum.org/",
+    //   chainId: 8082,
+    //   accounts:[process.env.PRIVATE]
 
-    //OKX testnet X1
-    X1: {
-      url: "https://testrpc.x1.tech",
-      accounts:[process.env.PRIVATE]
-    },
+    // },
+    // //Bera Chain testnet
+    //   berachainTestnet: {
+    //   url: "https://artio.rpc.berachain.com/",
+    //   chainId: 80085,
+    //   accounts: [process.env.PRIVATE],
+    // },
 
-    // Cyber Chain
-    cyberTestnet: {
-      url: "https://cyber-testnet.alt.technology/",
-      accounts:[process.env.PRIVATE]
-    },
-    cyberMainnet: {
-      url: "https://cyber.alt.technology/",
-      chainId: 7560,
-      accounts:[process.env.PRIVATE]
-    },
-    //Base Chain
-    baseMainnet: {
-      url: 'https://mainnet.base.org',
-      accounts: [process.env.PRIVATE],
-    },
-    baseSepolia: {
-      url: 'https://sepolia.base.org',
-      accounts: [process.env.PRIVATE],
-    }
-  },
+    // //OKX testnet X1
+    // X1: {
+    //   url: "https://testrpc.x1.tech",
+    //   accounts:[process.env.PRIVATE]
+    // },
+
+    // // Cyber Chain
+    // cyberTestnet: {
+    //   url: "https://cyber-testnet.alt.technology/",
+    //   accounts:[process.env.PRIVATE]
+    // },
+    // cyberMainnet: {
+    //   url: "https://cyber.alt.technology/",
+    //   chainId: 7560,
+    //   accounts:[process.env.PRIVATE]
+    // },
+    // //Base Chain
+    // baseMainnet: {
+    //   url: 'https://mainnet.base.org',
+    //   accounts: [process.env.PRIVATE],
+    // },
+    // baseSepolia: {
+    //   url: 'https://sepolia.base.org',
+    //   accounts: [process.env.PRIVATE],
+    // }
+  // },
   etherscan: {
     apiKey: {
       lineaSepolia: process.env.ETHERSCAN_API,
@@ -250,7 +249,7 @@ module.exports = {
 
       {
         network: "fuse",
-        chainId: 122, 
+        chainId: 122,
         urls:{
           apiURL: "https://explorer.fuse.io/api",
           browserURL: "https://explorer.fuse.io/",
@@ -259,7 +258,7 @@ module.exports = {
 
       {
         network: "fuseSpark",
-        chainId: 123, 
+        chainId: 123,
         urls:{
           apiURL: "https://explorer.fusespark.io/api",
           browserURL: "https://explorer.fusespark.io/",
@@ -344,7 +343,14 @@ module.exports = {
   },
 
   solidity: {
-    version: "0.6.11",
+    compilers: [
+      {
+        version: "0.6.11",
+      },
+      {
+        version: "0.6.12",
+      },
+    ],
     settings: {
       optimizer: {
         enabled: true,
