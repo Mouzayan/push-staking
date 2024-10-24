@@ -47,11 +47,6 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _;
     }
 
-    modifier onlyPushCore() {
-        require(msg.sender == address(pushCoreV3), "PushStaking: caller is not PushCore");
-        _;
-    }
-
     constructor(address _pushCoreV3Address, address _governance, address _admin) public {
         pushCoreV3 = PushCoreV3(_pushCoreV3Address);
         pushToken = IERC20(pushCoreV3.PUSH_TOKEN_ADDRESS());
@@ -79,7 +74,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
     }
 
-    // ================================ STAKING AND REWARDS CLAIMING FUNCTIONS ==============================
+    // =============================== STAKING AND REWARDS CLAIMING FUNCTIONS =============================
     /** // TODO: Add Natspec
      * @notice Function to initialize the staking procedure in Core contract
      * @dev    Requires caller to deposit/stake 1 PUSH token to ensure staking pool is never zero.
@@ -206,7 +201,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         return uint256((_to - _from) / epochDuration + 1);
     }
 
-    // ========================================= HELPER FUNCTIONS ========================================
+    // ========================================= HELPER FUNCTIONS =======================================
     /** // TODO: Add Natspec
      * @notice Function to return User's Push Holder weight based on amount being staked & current block number
      **/
@@ -430,8 +425,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         HOLDER_FEE_POOL = HOLDER_FEE_POOL.add(holderFeeAmount);
     }
 
-    // ======================================== RESTRICTED FUNCTIONS =========================================
-
+    // ===================================== RESTRICTED FUNCTIONS =======================================
     /** // TODO: Add Natspec.
      * Allows caller to add pool_fees at any given epoch
      **/
