@@ -796,7 +796,7 @@ contract PushCoreV3 is
     *************** */
 
     // TODO: add Natspec
-    function setPushStaking(address _pushStakingAddress) external {
+    function setPushStaking(address _pushStakingAddress) external returns (bool) {
         require(msg.sender == governance, "PushCoreV2: caller is not the governance");
         pushStaking = PushStaking(_pushStakingAddress);
     }
@@ -807,6 +807,6 @@ contract PushCoreV3 is
         require(_amount <= PROTOCOL_POOL_FEES, "Insufficient fees");
 
         PROTOCOL_POOL_FEES -= _amount;
-        require(IERC20(PUSH_TOKEN_ADDRESS).transfer(_to, _amount), "Fee transfer failed");
+        IERC20(PUSH_TOKEN_ADDRESS).transfer(_to, _amount);
     }
 }
