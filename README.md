@@ -58,12 +58,10 @@ forge test
 ---
 
 ## Resources
-- **[Website](https://push.org)** To checkout the Product.
-- **[Docs](https://push.org/docs/)** For comprehensive documentation.
-- **[Blog](https://medium.com/push-protocol)** To learn more about partners, new launches, etc.
-- **[Discord](https://discord.gg/pushprotocol)** for support and discussions with the community and the team.
-- **[GitHub](https://github.com/push-protocol)** for source code, project board, issues, and pull requests.
-- **[Twitter](https://twitter.com/pushprotocol)** for the latest updates on the product and published blogs.
+- **[Website](https://push.org)**
+- **[Docs](https://push.org/docs/)**
+- **[Blog](https://medium.com/push-protocol)**
+- **[GitHub](https://github.com/push-protocol)**
 
 <h4 align="center">
 
