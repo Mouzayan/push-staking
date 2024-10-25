@@ -5,7 +5,7 @@ const fs = require("fs");
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-ethers");
 require("hardhat-gas-reporter");
-require('hardhat-contract-sizer');
+// require('hardhat-contract-sizer');
 require("@nomicfoundation/hardhat-verify");
 
 const { ethers } = require("ethers");
