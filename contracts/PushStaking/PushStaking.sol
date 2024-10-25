@@ -11,7 +11,9 @@ import "../PushCore/PushCoreStorageV1_5.sol";
 import "../PushCore/PushCoreStorageV2.sol";
 import "../interfaces/IPUSH.sol";
 
-// TODO:Add contract description
+// TODO: Add contract description
+// TODO:Create Interface for PushStaking
+// TODO: NEXT: Address Integrator staking
 contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
