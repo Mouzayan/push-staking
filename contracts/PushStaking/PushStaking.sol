@@ -11,25 +11,53 @@ import "../PushCore/PushCoreStorageV1_5.sol";
 import "../PushCore/PushCoreStorageV2.sol";
 import "../interfaces/IPUSH.sol";
 
-// TODO: Add contract description
+// TODO: Add token holder staking into contract description
 // TODO: Create Interface for PushStaking
-// TODO: Add Integrator staking
+// TODO: Make IntegratorInfo --> IntegratorData
+/**
+ * @title PushStaking
+ * @notice Contract for managing integrator shares and reward distribution from protocol fees
+ * @dev Implements a share-based reward system with precision-scaled reward tracking
+ */
 contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
+    /**
+     * @notice Struct containing all information for each integrator
+     * @param shares The actual number of shares held (not percentage)
+     * @param lastRewardBlock Block number when rewards were last calculated
+     * @param rewardsPerShare Accumulated rewards per share (scaled by 1e12 for precision)
+     * @param rewardDebt Amount of rewards already claimed, prevents double claiming
+     */
+    struct IntegratorInfo {
+        uint256 shares;
+        uint256 lastRewardBlock;
+        uint256 rewardsPerShare;
+        uint256 rewardDebt;
+    }
+
+    // Constants
+    uint256 private constant PRECISION_FACTOR = 1e12;
+    uint256 private constant PERCENTAGE_DIVISOR = 1e2;
+
+    // State variables
     PushCoreV3 public pushCoreV3;
     IERC20 public pushToken;
 
     uint256 public WALLET_FEE_POOL;
     uint256 public HOLDER_FEE_POOL;
+    uint256 public WALLET_FP_TOTAL_SHARES;
 
     uint256 public WALLET_FEE_PERCENTAGE = 30;
     uint256 public HOLDER_FEE_PERCENTAGE = 70;
-    uint256 private constant PERCENTAGE_DIVISOR = 100;
 
+    address public TREASURY_WALLET;
     address public admin;
 
+    mapping(address => IntegratorInfo) public integrators;
+
+    // Events TODO: Move to Contract Interface
     event Staked(address indexed user, uint256 indexed amountStaked);
     event Unstaked(address indexed user, uint256 indexed amountUnstaked);
     event RewardsHarvested(
@@ -38,7 +66,11 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         uint256 fromEpoch,
         uint256 tillEpoch
     );
+    event IntegratorAdded(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
+    event IntegratorRemoved(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
+    event IntegratorRewardsHarvested(address indexed integratorAddress, uint256 rewards);
 
+    // TODO: Move to Contract Interface
     modifier onlyGovernance() {
         require(msg.sender == governance, "PushStaking: caller is not the governance");
         _;
@@ -49,11 +81,28 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _;
     }
 
-    constructor(address _pushCoreV3Address, address _governance, address _admin) public {
+    /** TODO: Incomplete Natspec
+     * @notice Contract constructor
+     * @dev Initializes treasury wallet as first integrator with 100 shares
+     */
+    constructor(
+        address _pushCoreV3Address,
+        address _admin,
+        address _pushTokenAddress,
+        address _treasuryWallet
+    ) public {
         pushCoreV3 = PushCoreV3(_pushCoreV3Address);
         pushToken = IERC20(pushCoreV3.PUSH_TOKEN_ADDRESS());
-        governance = _governance;
-        admin = _admin;
+        admin = _admin; // TODO: is this needed ???
+        TREASURY_WALLET = _treasuryWallet;
+
+        // Initialize treasury wallet with 100 shares
+        WALLET_FP_TOTAL_SHARES = 100;
+        IntegratorInfo storage treasury = integrators[TREASURY_WALLET];
+        treasury.shares = WALLET_FP_TOTAL_SHARES;
+        treasury.lastRewardBlock = block.number;
+
+        emit IntegratorAdded(TREASURY_WALLET, WALLET_FP_TOTAL_SHARES, WALLET_FP_TOTAL_SHARES);
     }
 
     function getProtocolPoolFees() public view returns (uint256) {
@@ -66,14 +115,96 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         WALLET_FEE_PERCENTAGE = _walletFeePercentage;
         HOLDER_FEE_PERCENTAGE = _holderFeePercentage;
 
-        updateFeePools();
+        _updateFeePools();
     }
 
-    function updateFeePools() public {
+    // TODO: Add Natspec
+    // TODO: MOVE TO INTERNAL SECTION
+    function _updateFeePools() internal {
         uint256 totalFees = getProtocolPoolFees();
 
         WALLET_FEE_POOL = totalFees.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
         HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
+    }
+
+    // ============================== INTEGRATOR ADDING AND REMOVING FUNCTIONS ============================
+
+    /**
+     * @notice Adds a new integrator with specified percentage of shares
+     * @dev Calculates new shares based on desired percentage of total
+     * @param _integratorAddress New integrator address
+     * @param _desiredPercentage Desired percentage of total shares (1-99)
+     */
+    function addIntegrator(address _integratorAddress, uint256 _desiredPercentage) external onlyGovernance {
+        require(integrators[_integratorAddress].shares == 0, "PushStaking: already an integrator");
+        require(_integratorAddress != address(0), "PushStaking: invalid address");
+        require(_desiredPercentage > 0 && _desiredPercentage < 100, "PushStaking: invalid percentage");
+
+        // Calculate new shares: (x / (x + total_shares)) * 100 = desired_percentage
+        uint256 newShares = (_desiredPercentage * WALLET_FP_TOTAL_SHARES) / (100 - _desiredPercentage);
+
+        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        integrator.shares = newShares;
+        integrator.lastRewardBlock = block.number;
+
+        WALLET_FP_TOTAL_SHARES = WALLET_FP_TOTAL_SHARES.add(newShares);
+
+        emit IntegratorAdded(_integratorAddress, newShares, WALLET_FP_TOTAL_SHARES);
+    }
+
+    /**
+     * @notice Removes an integrator and distributes final rewards
+     * @dev Completely deletes integrator data after harvesting rewards
+     */
+    function removeIntegrator(address _integratorAddress) external onlyGovernance {
+        require(integrators[_integratorAddress].shares > 0, "PushStaking: not an integrator");
+        require(_integratorAddress != TREASURY_WALLET, "PushStaking: cannot remove treasury wallet");
+
+        // Harvest final rewards
+        _harvestIntegratorRewards(_integratorAddress);
+
+        uint256 oldShares = integrators[_integratorAddress].shares;
+        WALLET_FP_TOTAL_SHARES = WALLET_FP_TOTAL_SHARES.sub(oldShares);
+
+        // Complete deletion of integrator data
+        delete integrators[_integratorAddress];
+
+        emit IntegratorRemoved(_integratorAddress, oldShares, WALLET_FP_TOTAL_SHARES);
+    }
+
+    /**
+     * @notice Allows integrators to manually harvest their rewards
+     */
+    function harvestIntegratorRewards() external {
+        _harvestIntegratorRewards(msg.sender);
+    }
+
+    /**
+     * @notice View function to check pending rewards for an integrator
+     * @return pending Amount of unclaimed rewards
+     */
+    function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
+        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        if (integrator.shares == 0) {
+            return 0;
+        }
+
+        uint256 _rewardsPerShare = integrator.rewardsPerShare;
+
+        if (block.number > integrator.lastRewardBlock && WALLET_FP_TOTAL_SHARES > 0) {
+            uint256 newRewards = WALLET_FEE_POOL
+                .mul(integrator.shares)
+                .div(WALLET_FP_TOTAL_SHARES);
+
+            _rewardsPerShare = _rewardsPerShare.add(
+                newRewards.mul(PRECISION_FACTOR).div(WALLET_FP_TOTAL_SHARES)
+            );
+        }
+
+        pending = integrator.shares
+            .mul(_rewardsPerShare)
+            .div(PRECISION_FACTOR)
+            .sub(integrator.rewardDebt);
     }
 
     // =============================== STAKING AND REWARDS CLAIMING FUNCTIONS =============================
@@ -280,8 +411,8 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         );
         // Setting up Epoch Based Rewards
         if (_currentEpoch > _lastEpochInitiliazed || _currentEpoch == 1) {
-            uint256 availableRewardsPerEpoch = (PROTOCOL_POOL_FEES -
-                previouslySetEpochRewards);
+            // Calculate available rewards from HOLDER_FEE_POOL instead of PROTOCOL_POOL_FEES
+            uint256 availableRewardsPerEpoch = (HOLDER_FEE_POOL - previouslySetEpochRewards);
             uint256 _epochGap = _currentEpoch.sub(_lastEpochInitiliazed);
 
             if (_epochGap > 1) {
@@ -294,7 +425,8 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
             _pullProtocolFees();
 
             lastEpochInitialized = block.number;
-            previouslySetEpochRewards = PROTOCOL_POOL_FEES;
+            // Track previously set rewards against HOLDER_FEE_POOL instead of PROTOCOL_POOL_FEES
+            previouslySetEpochRewards = HOLDER_FEE_POOL;
         }
         // Setting up Epoch Based TotalWeight
         if (
@@ -425,6 +557,54 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
 
         WALLET_FEE_POOL = WALLET_FEE_POOL.add(walletFeeAmount);
         HOLDER_FEE_POOL = HOLDER_FEE_POOL.add(holderFeeAmount);
+    }
+
+    /**
+     * @notice Internal function to calculate and distribute integrator rewards
+     * @dev Uses precision-scaled reward tracking to ensure accurate distribution
+     */
+    function _harvestIntegratorRewards(address _integratorAddress) internal returns (uint256 rewards) {
+        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        require(integrator.shares > 0, "PushStaking: not an integrator");
+
+        uint256 currentBlock = block.number;
+
+        // Update rewards if new blocks have been mined
+        if (currentBlock > integrator.lastRewardBlock) {
+            _pullProtocolFees();
+
+            if (WALLET_FP_TOTAL_SHARES > 0) {
+                // Calculate this integrator's share of new rewards
+                uint256 newRewards = WALLET_FEE_POOL
+                    .mul(integrator.shares)
+                    .div(WALLET_FP_TOTAL_SHARES);
+
+                // Update rewardsPerShare with precision scaling
+                integrator.rewardsPerShare = integrator.rewardsPerShare.add(
+                    newRewards.mul(PRECISION_FACTOR).div(WALLET_FP_TOTAL_SHARES)
+                );
+            }
+            integrator.lastRewardBlock = currentBlock;
+        }
+
+        // Calculate pending rewards using precision scaling
+        uint256 pending = integrator.shares
+            .mul(integrator.rewardsPerShare)
+            .div(PRECISION_FACTOR)
+            .sub(integrator.rewardDebt);
+
+        if (pending > 0) {
+            rewards = pending;
+            pushToken.safeTransfer(_integratorAddress, rewards);
+            WALLET_FEE_POOL = WALLET_FEE_POOL.sub(rewards);
+
+            // Update reward debt to prevent double claiming
+            integrator.rewardDebt = integrator.shares
+                .mul(integrator.rewardsPerShare)
+                .div(PRECISION_FACTOR);
+
+            emit IntegratorRewardsHarvested(_integratorAddress, rewards);
+        }
     }
 
     // ===================================== RESTRICTED FUNCTIONS =======================================
