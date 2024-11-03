@@ -18,6 +18,10 @@ import "../interfaces/IPUSH.sol";
  * @notice This contract implements an advancement in the Push Protocol staking mechanism,
  *         facilitating staking for both PUSH token holders and wallet integrators.
  *
+ *         The contract can be paused by an admin in emergency situations. It implements
+ *         OpenZeppelin's Pausable to halt operations during critical security incidents
+ *         or when vulnerabilities are detected.
+ *
  * @dev The contract operates independently from the PushCore contract, with its primary dependency
  *      being the ability to read the `PROTOCOL_POOL_FEE` state variable from the core contract.
  *
@@ -65,20 +69,20 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         uint256 rewardDebt;
     }
 
-    // Constants
+    // Constants TODO: DOUBLE CHECK FORMAT
     uint256 private constant PRECISION_FACTOR = 1e12;
     uint256 private constant PERCENTAGE_DIVISOR = 1e2;
 
     // State variables
     PushCoreV3 public pushCoreV3;
-    IERC20 public pushToken;
+    IERC20 public pushToken; // TODO: DOUBLE CHECK if this is redudnat vis a vis inehritance tree
 
     uint256 public WALLET_FEE_POOL;
     uint256 public HOLDER_FEE_POOL;
     uint256 public WALLET_FP_TOTAL_SHARES;
 
-    uint256 public WALLET_FEE_PERCENTAGE = 30;
-    uint256 public HOLDER_FEE_PERCENTAGE = 70;
+    uint256 public WALLET_FEE_PERCENTAGE = 30; // TODO: DOUBLE CHECK FORMAT
+    uint256 public HOLDER_FEE_PERCENTAGE = 70; // TODO: DOUBLE CHECK FORMAT
 
     address public TREASURY_WALLET;
     address public admin; // TODO: add way for governance to set admin
@@ -86,19 +90,20 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     mapping(address => IntegratorData) public integrators;
 
     // Events TODO: Move to Contract Interface
-    event Staked(address indexed user, uint256 indexed amountStaked);
-    event Unstaked(address indexed user, uint256 indexed amountUnstaked);
+    event Staked(address indexed user, uint256 amountStaked);
+    event Unstaked(address indexed user, uint256 amountUnstaked);
     event RewardsHarvested(
         address indexed user,
-        uint256 indexed rewardAmount,
+        uint256 rewardAmount,
         uint256 fromEpoch,
         uint256 tillEpoch
     );
     event IntegratorAdded(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
     event IntegratorRemoved(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
     event IntegratorRewardsHarvested(address indexed integratorAddress, uint256 rewards);
+    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
 
-    // TODO: Move to Contract Interface
+    // TODO: Move to Contract Interface DOUBLE CHECK IF THAT IS THE STANDARD
     modifier onlyGovernance() {
         require(msg.sender == governance, "PushStaking: caller is not the governance");
         _;
@@ -109,20 +114,18 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _;
     }
 
+    // =========================================== CONSTRUCTOR ===========================================
+
     /**
-     * @notice Initializes the PushStaking contract with core components and treasury wallet
-     * @dev Sets up initial state:
-     *      - Connects to PushCore contract for protocol fee management
-     *      - Initializes PUSH token interface
-     *      - Sets up admin and treasury wallet addresses
-     *      - Allocates initial 100 shares to treasury wallet in integrator system
-     *      - Treasury wallet cannot be removed once set
-     *      - Fee pools start at 0 and are updated via _pullProtocolFees
+     * @notice Initializes the PushStaking contract with the given addresses and sets up the initial
+     *         state. Initializes `WALLET_FP_TOTAL_SHARES` to 100 and assigns the shares to the
+     *         `TREASURY_WALLET`.
      *
-     * @param _pushCoreV3Address Address of the PushCore V3 contract for protocol integration
-     * @param _admin Address that will have administrative privileges (can set governance)
-     * @param _pushTokenAddress Address of the PUSH ERC20 token contract
-     * @param _treasuryWallet Address that will receive base treasury shares (permanent integrator)
+     * @param _pushCoreV3Address        The address of the PushCoreV3 contract.
+     * @param _admin                    The address of the contract admin who will have special privileges,
+     *                                  such as pausing the contract.
+     * @param _pushTokenAddress         Address of the PUSH ERC20 token contract.
+     * @param _treasuryWallet           Address that will receive base integrator shares (permanent integrator).
      */
     constructor(
         address _pushCoreV3Address,
@@ -132,7 +135,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     ) public {
         pushCoreV3 = PushCoreV3(_pushCoreV3Address);
         pushToken = IERC20(pushCoreV3.PUSH_TOKEN_ADDRESS());
-        admin = _admin; // TODO: is this needed ???
+        admin = _admin;
         TREASURY_WALLET = _treasuryWallet;
 
         // Initialize treasury wallet with 100 shares
@@ -144,51 +147,25 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         emit IntegratorAdded(TREASURY_WALLET, WALLET_FP_TOTAL_SHARES, WALLET_FP_TOTAL_SHARES);
     }
 
-    function getProtocolPoolFees() public view returns (uint256) {
-        return pushCoreV3.PROTOCOL_POOL_FEES();
-    }
+    // =================================== INTEGRATOR STAKING FUNCTIONS ==================================
 
     /**
-     * @notice Updates the fee pool distribution between wallet and holder pools
-     * @dev Only callable by governance
-     * @param _walletFeePercentage Percentage for integrator wallet pool (0-100)
-     * @param _holderFeePercentage Percentage for token holder pool (0-100)
+     * @notice Adds a new integrator with a specified percentage of total shares.
+     *
+     * @dev This function calculates and allocates new shares to an integrator based on the share
+     *      percentage. `addIntegrator()` is akin to `stake()` for token holders, enabling integrator
+     *      wallets to participate in staking and earn rewards.
+     *
+     * @param _integratorAddress       The address of the new integrator to be added.
+     * @param _sharePercentage         The percentage of total shares for the integrator.
      */
-    function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public onlyGovernance {
-        require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DIVISOR, "PushStaking: percentages must add up to 100");
-
-        WALLET_FEE_PERCENTAGE = _walletFeePercentage;
-        HOLDER_FEE_PERCENTAGE = _holderFeePercentage;
-
-        _updateFeePools();
-    }
-
-    /** // TODO: MOVE TO INTERNAL SECTION
-     * @notice Internal function to update fee pools based on current protocol fees
-     * @dev Splits protocol fees between WALLET_FEE_POOL and HOLDER_FEE_POOL
-     */
-    function _updateFeePools() internal {
-        uint256 totalFees = getProtocolPoolFees();
-
-        WALLET_FEE_POOL = totalFees.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
-        HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
-    }
-
-    // ============================== INTEGRATOR ADDING AND REMOVING FUNCTIONS ============================
-
-    /**
-     * @notice Adds a new integrator with specified percentage of shares
-     * @dev Calculates new shares based on desired percentage of total
-     * @param _integratorAddress New integrator address
-     * @param _desiredPercentage Desired percentage of total shares (1-99)
-     */
-    function addIntegrator(address _integratorAddress, uint256 _desiredPercentage) external onlyGovernance {
+    function addIntegrator(address _integratorAddress, uint256 _sharePercentage) external onlyGovernance {
         require(integrators[_integratorAddress].shares == 0, "PushStaking: already an integrator");
         require(_integratorAddress != address(0), "PushStaking: invalid address");
-        require(_desiredPercentage > 0 && _desiredPercentage < 100, "PushStaking: invalid percentage");
+        require(_sharePercentage > 0 && _sharePercentage < 100, "PushStaking: invalid percentage");
 
-        // Calculate new shares: (x / (x + total_shares)) * 100 = desired_percentage
-        uint256 newShares = (_desiredPercentage * WALLET_FP_TOTAL_SHARES) / (100 - _desiredPercentage);
+        // Formula to calculate new shares: (x / (x + total_shares)) * 100 = desired_percentage
+        uint256 newShares = (_sharePercentage * WALLET_FP_TOTAL_SHARES) / (100 - _sharePercentage);
 
         IntegratorData storage integrator = integrators[_integratorAddress];
         integrator.shares = newShares;
@@ -200,8 +177,13 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Removes an integrator and distributes final rewards
-     * @dev Completely deletes integrator data after harvesting rewards
+     * @notice Removes an integrator and distributes their final rewards.
+     *
+     * @dev This function harvests any remaining rewards for the integrator and deletes their data.
+     *      `removeIntegrator()` is akin to `unstake()` for token holders, ending the integrator's
+     *      participation in the reward system.
+     *
+     * @param _integratorAddress      The address of the integrator to be removed.
      */
     function removeIntegrator(address _integratorAddress) external onlyGovernance {
         require(integrators[_integratorAddress].shares > 0, "PushStaking: not an integrator");
@@ -220,46 +202,21 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Allows integrators to manually harvest their rewards
+     * @notice Allows integrators to manually harvest their rewards.
+     *
+     * @dev Integrators can call this function to collect any accumulated rewards up to the current
+     *      block.
      */
-    function harvestIntegratorRewards() external {
+    function harvestIntegratorRewards() external whenNotPaused {
         _harvestIntegratorRewards(msg.sender);
     }
 
-    /**
-     * @notice View function to check pending rewards for an integrator
-     * @return pending Amount of unclaimed rewards
-     */
-    function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
-        IntegratorData storage integrator = integrators[_integratorAddress];
-        if (integrator.shares == 0) {
-            return 0;
-        }
-
-        uint256 _rewardsPerShare = integrator.rewardsPerShare;
-
-        if (block.number > integrator.lastRewardBlock && WALLET_FP_TOTAL_SHARES > 0) {
-            uint256 newRewards = WALLET_FEE_POOL
-                .mul(integrator.shares)
-                .div(WALLET_FP_TOTAL_SHARES);
-
-            _rewardsPerShare = _rewardsPerShare.add(
-                newRewards.mul(PRECISION_FACTOR).div(WALLET_FP_TOTAL_SHARES)
-            );
-        }
-
-        pending = integrator.shares
-            .mul(_rewardsPerShare)
-            .div(PRECISION_FACTOR)
-            .sub(integrator.rewardDebt);
-    }
-
-    // =============================== STAKING AND REWARDS CLAIMING FUNCTIONS =============================
+    // ================================== TOKEN HOLDER STAKING FUNCTIONS ================================
     /** // TODO: Add Natspec
      * @notice Function to initialize the staking procedure in Core contract
      * @dev    Requires caller to deposit/stake 1 PUSH token to ensure staking pool is never zero.
      **/
-    function initializeStake() external {
+    function initializeStake() external whenNotPaused {
         require(
             genesisEpoch == 0,
             "PushCoreV3::initializeStake: Already Initialized"
@@ -276,7 +233,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *         Triggers weight adjustents functions
      * @param  _amount represents amount of tokens to be staked
      **/
-    function stake(uint256 _amount) external {
+    function stake(uint256 _amount) external whenNotPaused {
         _stake(msg.sender, _amount);
         emit Staked(msg.sender, _amount);
     }
@@ -287,7 +244,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *         Triggers weight adjustents functions
      *         Allows users to unstake all amount at once
      **/
-    function unstake() external {
+    function unstake() external whenNotPaused {
         require(
             block.number >
                 userFeesInfo[msg.sender].lastStakedBlock + epochDuration,
@@ -320,7 +277,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *         Rewards are claculated from start epoch till endEpoch(currentEpoch - 1).
      *         Once calculated, user's total claimed rewards and nextFromEpoch details is updated.
      **/
-    function harvestAll() public {
+    function harvestAll() public whenNotPaused {
         uint256 currentEpoch = lastEpochRelative(genesisEpoch, block.number);
 
         uint256 rewards = _harvest(msg.sender, currentEpoch - 1);
@@ -333,7 +290,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @dev    _tillEpoch should never be equal to currentEpoch.
      *         Transfers rewards to caller and updates user's details.
      **/
-    function harvestPaginated(uint256 _tillEpoch) external {
+    function harvestPaginated(uint256 _tillEpoch) external whenNotPaused {
         uint256 rewards = _harvest(msg.sender, _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(msg.sender, rewards);
     }
@@ -344,7 +301,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @dev    only accessible by Push Admin
      *         Unlike other harvest functions, this is designed to transfer rewards to Push Governance.
      **/
-    function daoHarvestPaginated(uint256 _tillEpoch) onlyGovernance external {
+    function daoHarvestPaginated(uint256 _tillEpoch) external onlyGovernance {
         uint256 rewards = _harvest(address(this), _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(governance, rewards);
     }
@@ -379,6 +336,43 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
             "PushCoreV3:lastEpochRelative:: Relative Block Number Overflow"
         );
         return uint256((_to - _from) / epochDuration + 1);
+    }
+
+    /**
+     * @notice Retrieves the current total protocol pool fees from the PushCoreV3 contract.
+     * @dev This function is a view function that reads the `PROTOCOL_POOL_FEES` value from the PushCoreV3 contract.
+     * @return The total amount of protocol pool fees currently held in the PushCoreV3 contract.
+     */
+    function getProtocolPoolFees() public view returns (uint256) {
+        return pushCoreV3.PROTOCOL_POOL_FEES();
+    }
+
+    /**
+     * @notice View function to check pending rewards for an integrator
+     * @return pending Amount of unclaimed rewards
+     */
+    function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
+        IntegratorData storage integrator = integrators[_integratorAddress];
+        if (integrator.shares == 0) {
+            return 0;
+        }
+
+        uint256 _rewardsPerShare = integrator.rewardsPerShare;
+
+        if (block.number > integrator.lastRewardBlock && WALLET_FP_TOTAL_SHARES > 0) {
+            uint256 newRewards = WALLET_FEE_POOL
+                .mul(integrator.shares)
+                .div(WALLET_FP_TOTAL_SHARES);
+
+            _rewardsPerShare = _rewardsPerShare.add(
+                newRewards.mul(PRECISION_FACTOR).div(WALLET_FP_TOTAL_SHARES)
+            );
+        }
+
+        pending = integrator.shares
+            .mul(_rewardsPerShare)
+            .div(PRECISION_FACTOR)
+            .sub(integrator.rewardDebt);
     }
 
     // ========================================= HELPER FUNCTIONS =======================================
@@ -662,14 +656,28 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         }
     }
 
+    /**
+     * @notice Internal function to update fee pools based on current protocol fees
+     * @dev Splits protocol fees between WALLET_FEE_POOL and HOLDER_FEE_POOL
+     */
+    function _updateFeePools() internal {
+        uint256 totalFees = getProtocolPoolFees();
+
+        WALLET_FEE_POOL = totalFees.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
+        HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
+    }
+
     // ===================================== RESTRICTED FUNCTIONS =======================================
 
     /**
-     * @notice Allows manual addition of fees to the protocol pool
-     * @dev Transfers tokens from caller to contract and updates PROTOCOL_POOL_FEES
-     * @param _rewardAmount Amount of tokens to add to pool
+     * @notice Adds a specified amount of rewards to the protocol pool fees.
+     *
+     * @dev This function allows the admin to transfer a specified `_rewardAmount` of PUSH tokens
+     *      from the caller's address to the contract, increasing the `PROTOCOL_POOL_FEES`.
+     *
+     * @param _rewardAmount             The amount of PUSH tokens to be added to the protocol pool fees.
      */
-    function addPoolFees(uint256 _rewardAmount) external {
+    function addPoolFees(uint256 _rewardAmount) external onlyAdmin {
         IERC20(PUSH_TOKEN_ADDRESS).safeTransferFrom(
             msg.sender,
             address(this),
@@ -678,28 +686,61 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         PROTOCOL_POOL_FEES = PROTOCOL_POOL_FEES.add(_rewardAmount);
     }
 
-    /** // TODO: should this be removed?
-     * @notice Updates the governance address
-     * @dev Only callable by admin
-     * @param _governanceAddress New governance address
+    /**
+     * @notice Pauses the contract temporarily halting all critical operations.
+     *
+     * @dev This function can only be called by the admin. It sets the contract to a
+     *      paused state, preventing functions like staking and reward distribution from
+     *      being executed until unpaused.
      */
-    function setGovernanceAddress(address _governanceAddress) onlyAdmin external {
-        governance = _governanceAddress;
-    }
-
-    /** // TODO: called by ADMIN??
-     * @notice Pauses all contract operations
-     * @dev Only callable by governance
-     */
-    function pauseContract() onlyGovernance external {
+    function pauseContract() external onlyAdmin {
         _pause();
     }
 
-    /** // TODO: called by ADMIN??
-     * @notice Unpauses contract operations
-     * @dev Only callable by governance
+    /**
+     * @notice Unpauses the contract, resuming all normal operations.
+     *
+     * @dev This function can only be called by the contract admin. It lifts the paused
+     *      state of the contract, allowing staking and other functions to be resumed.
      */
-    function unPauseContract() onlyGovernance external {
+    function unPauseContract() external onlyAdmin {
         _unpause();
+    }
+
+    /**
+     * @notice Updates the contract's admin to a new address.
+     *
+     * @dev This function allows governance to set a new admin for the contract. The new
+     *      admin must be a valid, non-zero address and different from the current admin.
+     *
+     * @param _newAdmin                 The address of the new admin to be assigned.
+     */
+    function setAdmin(address _newAdmin) external onlyGovernance {
+        require(_newAdmin != address(0), "PushStaking: invalid admin address");
+        require(_newAdmin != admin, "PushStaking: new admin same as current admin");
+
+        address oldAdmin = admin;
+        admin = _newAdmin;
+
+        emit AdminChanged(oldAdmin, _newAdmin);
+    }
+
+    /**
+     * @notice Updates the fee distribution percentages for the wallet fee pool and the holder fee pool.
+     *
+     * @dev This function allows governance to set new percentages for distributing fees between
+     *      the wallet and holder fee pools. The sum of `_walletFeePercentage` and `_holderFeePercentage`
+     *      must add up to 100%.
+     *
+     * @param _walletFeePercentage      The new percentage of fees to be allocated to the wallet fee pool.
+     * @param _holderFeePercentage      The new percentage of fees to be allocated to the holder fee pool.
+     */
+    function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public onlyAdmin {
+        require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DIVISOR, "PushStaking: percentages must add up to 100");
+
+        WALLET_FEE_PERCENTAGE = _walletFeePercentage;
+        HOLDER_FEE_PERCENTAGE = _holderFeePercentage;
+
+        _updateFeePools();
     }
 }
