@@ -339,17 +339,25 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Retrieves the current total protocol pool fees from the PushCoreV3 contract.
-     * @dev This function is a view function that reads the `PROTOCOL_POOL_FEES` value from the PushCoreV3 contract.
-     * @return The total amount of protocol pool fees currently held in the PushCoreV3 contract.
+     * @notice Retrieves the current total amount of `PROTOCOL_POOL_FEES`, from the PushCoreV3 contract.
+     *
+     * @return                         The total amount of protocol pool fees currently available in
+     *                                 the PushCoreV3 contract.
      */
     function getProtocolPoolFees() public view returns (uint256) {
         return pushCoreV3.PROTOCOL_POOL_FEES();
     }
 
     /**
-     * @notice View function to check pending rewards for an integrator
-     * @return pending Amount of unclaimed rewards
+     * @notice Calculates the pending rewards for a specified integrator.
+     *
+     * @dev This function returns the amount of rewards that are currently pending and can be claimed
+     *      by the specified integrator.
+     *
+     * @param _integratorAddress       The address of the integrator whose pending rewards are to be
+     *                                 calculated.
+     *
+     * @return pending                 The calculated amount of pending rewards for the integrator.
      */
     function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
         IntegratorData storage integrator = integrators[_integratorAddress];
@@ -558,7 +566,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         }
     }
 
-    /**
+    /** // TODO: Revisit Natspec
      * @notice Internal function to stake tokens for a user
      * @dev Calculates user weight, transfers tokens, and updates staking info
      * @param _staker Address of the staking user
@@ -594,8 +602,11 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Pulls protocol fees from core contract and updates fee pools
-     * @dev Updates both WALLET_FEE_POOL and HOLDER_FEE_POOL based on percentages
+     * @notice Pull protocol fees from the PushCoreV3 contract and distribute them
+     *         into the wallet and holder fee pools. This function retrieves the total
+     *         protocol fees from the PushCoreV3 contract, transfers them to address(this),
+     *         and allocates them between `WALLET_FEE_POOL` and `HOLDER_FEE_POOL` based
+     *         on the defined percentages.
      */
     function _pullProtocolFees() internal {
         uint256 feesToTransfer = pushCoreV3.PROTOCOL_POOL_FEES();
@@ -609,8 +620,17 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Internal function to calculate and distribute integrator rewards
-     * @dev Uses precision-scaled reward tracking to ensure accurate distribution
+     * @notice Internal function to calculate and distribute pending rewards for an integrator.
+     *
+     * @dev This function:
+     *      1. Updates rewards based on new blocks mined since last harvest
+     *      2. Calculates pending rewards using precision-scaled accounting
+     *      3. Transfers rewards to the integrator
+     *      4. Updates state to prevent double claiming
+     *
+     * @param _integratorAddress        The address of the integrator claiming rewards.
+     *
+     * @return rewards                  The amount of PUSH tokens transferred to the integrator.
      */
     function _harvestIntegratorRewards(address _integratorAddress) internal returns (uint256 rewards) {
         IntegratorData storage integrator = integrators[_integratorAddress];
@@ -657,8 +677,10 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Internal function to update fee pools based on current protocol fees
-     * @dev Splits protocol fees between WALLET_FEE_POOL and HOLDER_FEE_POOL
+     * @notice Internal function to update the fee pools for wallets and token holders.
+     *
+     * @dev This function recalculates the distribution of total protocol pool fees between the
+     *      `WALLET_FEE_POOL` and `HOLDER_FEE_POOL` based on their respective percentages.
      */
     function _updateFeePools() internal {
         uint256 totalFees = getProtocolPoolFees();
