@@ -807,7 +807,6 @@ contract PushCoreV3 is
     // TODO: add Natspec
     function setPushStaking(address _pushStakingAddress) external returns (bool) {
         require(msg.sender == governance, "PushCoreV2: caller is not the governance");
-        pushStaking = _pushStakingAddress;
         pushStakingAddress = _pushStakingAddress;
         return true;
     }
