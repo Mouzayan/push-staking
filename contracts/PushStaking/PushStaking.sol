@@ -11,26 +11,54 @@ import "../PushCore/PushCoreStorageV1_5.sol";
 import "../PushCore/PushCoreStorageV2.sol";
 import "../interfaces/IPUSH.sol";
 
-// TODO: Add token holder staking into contract description
-// TODO: Create Interface for PushStaking
-// TODO: Make IntegratorInfo --> IntegratorData
+// TODO: Create Interface for PushStaking IMPORTANT
 /**
  * @title PushStaking
- * @notice Contract for managing integrator shares and reward distribution from protocol fees
- * @dev Implements a share-based reward system with precision-scaled reward tracking
+ * @author em_mutable
+ * @notice This contract implements an advancement in the Push Protocol staking mechanism,
+ *         facilitating staking for both PUSH token holders and wallet integrators.
+ *
+ * @dev The contract operates independently from the PushCore contract, with its primary dependency
+ *      being the ability to read the `PROTOCOL_POOL_FEE` state variable from the core contract.
+ *
+ * Key Features:
+ *          - Dual Actor Staking: Supports staking for both PUSH token holders and wallets
+ *            that integrate Push Protocol features.
+ *          - Standalone Operation: Functions as a separate contract from PushCore, enhancing
+ *            modularity and the separation of concerns.
+ *          - Fee Pool Integration: Interacts with the core protocol's fee pool by reading the
+ *            `PROTOCOL_POOL_FEE` state variable from Core, for reward calculations and distributions.
+ *          - Reward Distribution: Calculates and distributes rewards to stakers.
+ *          - Governance and Flexibility: Allows for future adjustments and enhancements through
+ *            community governance, ensuring the staking mechanism remains adaptable to evolving
+ *            protocol needs.
+ *
+ *         1. Integrator Wallet Staking:
+ *            - Allows protocol integrators to receive a share of protocol fees
+ *            - Uses a share-based system where integrators are allocated shares
+ *            - Treasury wallet maintains base shares
+ *            - Integrators can harvest rewards based on their share allocation
+ *            - Rewards come from WALLET_FEE_POOL (30% of protocol fees at contract deployment)
+ *
+ *         2. Token Holder Staking:
+ *            - Allows PUSH token holders to stake tokens and earn rewards
+ *            - Uses an epoch-based reward system
+ *            - Rewards are calculated based on stake weight and duration
+ *            - Requires minimum 1 epoch duration for staking
+ *            - Rewards come from HOLDER_FEE_POOL (70% of protocol fees at contract deployment)
  */
 contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    /**
-     * @notice Struct containing all information for each integrator
-     * @param shares The actual number of shares held (not percentage)
-     * @param lastRewardBlock Block number when rewards were last calculated
-     * @param rewardsPerShare Accumulated rewards per share (scaled by 1e12 for precision)
-     * @param rewardDebt Amount of rewards already claimed, prevents double claiming
+    /** TODO: MOVE TO INTERFACE
+     * @notice Struct containing an integrator's data.
+     * @param shares                The actual number of shares an integrator has (not the percentage).
+     * @param lastRewardBlock       Block number when rewards were last calculated
+     * @param rewardsPerShare       Accumulated rewards per share (scaled by 1e12 for precision).
+     * @param rewardDebt            Amount of rewards already claimed, prevents double claiming.
      */
-    struct IntegratorInfo {
+    struct IntegratorData {
         uint256 shares;
         uint256 lastRewardBlock;
         uint256 rewardsPerShare;
@@ -53,9 +81,9 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     uint256 public HOLDER_FEE_PERCENTAGE = 70;
 
     address public TREASURY_WALLET;
-    address public admin;
+    address public admin; // TODO: add way for governance to set admin
 
-    mapping(address => IntegratorInfo) public integrators;
+    mapping(address => IntegratorData) public integrators;
 
     // Events TODO: Move to Contract Interface
     event Staked(address indexed user, uint256 indexed amountStaked);
@@ -81,9 +109,20 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _;
     }
 
-    /** TODO: Incomplete Natspec
-     * @notice Contract constructor
-     * @dev Initializes treasury wallet as first integrator with 100 shares
+    /**
+     * @notice Initializes the PushStaking contract with core components and treasury wallet
+     * @dev Sets up initial state:
+     *      - Connects to PushCore contract for protocol fee management
+     *      - Initializes PUSH token interface
+     *      - Sets up admin and treasury wallet addresses
+     *      - Allocates initial 100 shares to treasury wallet in integrator system
+     *      - Treasury wallet cannot be removed once set
+     *      - Fee pools start at 0 and are updated via _pullProtocolFees
+     *
+     * @param _pushCoreV3Address Address of the PushCore V3 contract for protocol integration
+     * @param _admin Address that will have administrative privileges (can set governance)
+     * @param _pushTokenAddress Address of the PUSH ERC20 token contract
+     * @param _treasuryWallet Address that will receive base treasury shares (permanent integrator)
      */
     constructor(
         address _pushCoreV3Address,
@@ -98,7 +137,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
 
         // Initialize treasury wallet with 100 shares
         WALLET_FP_TOTAL_SHARES = 100;
-        IntegratorInfo storage treasury = integrators[TREASURY_WALLET];
+        IntegratorData storage treasury = integrators[TREASURY_WALLET];
         treasury.shares = WALLET_FP_TOTAL_SHARES;
         treasury.lastRewardBlock = block.number;
 
@@ -109,6 +148,12 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         return pushCoreV3.PROTOCOL_POOL_FEES();
     }
 
+    /**
+     * @notice Updates the fee pool distribution between wallet and holder pools
+     * @dev Only callable by governance
+     * @param _walletFeePercentage Percentage for integrator wallet pool (0-100)
+     * @param _holderFeePercentage Percentage for token holder pool (0-100)
+     */
     function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public onlyGovernance {
         require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DIVISOR, "PushStaking: percentages must add up to 100");
 
@@ -118,8 +163,10 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _updateFeePools();
     }
 
-    // TODO: Add Natspec
-    // TODO: MOVE TO INTERNAL SECTION
+    /** // TODO: MOVE TO INTERNAL SECTION
+     * @notice Internal function to update fee pools based on current protocol fees
+     * @dev Splits protocol fees between WALLET_FEE_POOL and HOLDER_FEE_POOL
+     */
     function _updateFeePools() internal {
         uint256 totalFees = getProtocolPoolFees();
 
@@ -143,7 +190,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         // Calculate new shares: (x / (x + total_shares)) * 100 = desired_percentage
         uint256 newShares = (_desiredPercentage * WALLET_FP_TOTAL_SHARES) / (100 - _desiredPercentage);
 
-        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        IntegratorData storage integrator = integrators[_integratorAddress];
         integrator.shares = newShares;
         integrator.lastRewardBlock = block.number;
 
@@ -184,7 +231,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @return pending Amount of unclaimed rewards
      */
     function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
-        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        IntegratorData storage integrator = integrators[_integratorAddress];
         if (integrator.shares == 0) {
             return 0;
         }
@@ -517,7 +564,12 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         }
     }
 
-    // TODO: Revisit Natspec
+    /**
+     * @notice Internal function to stake tokens for a user
+     * @dev Calculates user weight, transfers tokens, and updates staking info
+     * @param _staker Address of the staking user
+     * @param _amount Amount of tokens to stake
+     */
     function _stake(address _staker, uint256 _amount) private {
         uint256 currentEpoch = lastEpochRelative(genesisEpoch, block.number);
         uint256 blockNumberToConsider = genesisEpoch.add(
@@ -547,7 +599,10 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _adjustUserAndTotalStake(_staker, userWeight);
     }
 
-    // TODO: add Natspec
+    /**
+     * @notice Pulls protocol fees from core contract and updates fee pools
+     * @dev Updates both WALLET_FEE_POOL and HOLDER_FEE_POOL based on percentages
+     */
     function _pullProtocolFees() internal {
         uint256 feesToTransfer = pushCoreV3.PROTOCOL_POOL_FEES();
         pushCoreV3.transferProtocolFees(address(this), feesToTransfer);
@@ -564,7 +619,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @dev Uses precision-scaled reward tracking to ensure accurate distribution
      */
     function _harvestIntegratorRewards(address _integratorAddress) internal returns (uint256 rewards) {
-        IntegratorInfo storage integrator = integrators[_integratorAddress];
+        IntegratorData storage integrator = integrators[_integratorAddress];
         require(integrator.shares > 0, "PushStaking: not an integrator");
 
         uint256 currentBlock = block.number;
@@ -608,9 +663,12 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     // ===================================== RESTRICTED FUNCTIONS =======================================
-    /** // TODO: Add Natspec.
-     * Allows caller to add pool_fees at any given epoch
-     **/
+
+    /**
+     * @notice Allows manual addition of fees to the protocol pool
+     * @dev Transfers tokens from caller to contract and updates PROTOCOL_POOL_FEES
+     * @param _rewardAmount Amount of tokens to add to pool
+     */
     function addPoolFees(uint256 _rewardAmount) external {
         IERC20(PUSH_TOKEN_ADDRESS).safeTransferFrom(
             msg.sender,
@@ -620,17 +678,27 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         PROTOCOL_POOL_FEES = PROTOCOL_POOL_FEES.add(_rewardAmount);
     }
 
-    // TODO: Add Natspec.
+    /** // TODO: should this be removed?
+     * @notice Updates the governance address
+     * @dev Only callable by admin
+     * @param _governanceAddress New governance address
+     */
     function setGovernanceAddress(address _governanceAddress) onlyAdmin external {
         governance = _governanceAddress;
     }
 
-    // TODO: Add Natspec.
+    /** // TODO: called by ADMIN??
+     * @notice Pauses all contract operations
+     * @dev Only callable by governance
+     */
     function pauseContract() onlyGovernance external {
         _pause();
     }
 
-    // TODO: Add Natspec.
+    /** // TODO: called by ADMIN??
+     * @notice Unpauses contract operations
+     * @dev Only callable by governance
+     */
     function unPauseContract() onlyGovernance external {
         _unpause();
     }
