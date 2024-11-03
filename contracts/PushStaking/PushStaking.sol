@@ -6,12 +6,13 @@ import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
+import "../interfaces/IPUSH.sol";
+import "../interfaces/IPushStaking.sol";
+
 import "../PushCore/PushCoreV3.sol";
 import "../PushCore/PushCoreStorageV1_5.sol";
 import "../PushCore/PushCoreStorageV2.sol";
-import "../interfaces/IPUSH.sol";
 
-// TODO: Create Interface for PushStaking IMPORTANT
 /**
  * @title PushStaking
  * @author em_mutable
@@ -51,71 +52,31 @@ import "../interfaces/IPUSH.sol";
  *            - Requires minimum 1 epoch duration for staking
  *            - Rewards come from HOLDER_FEE_POOL (70% of protocol fees at contract deployment)
  */
-contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
+contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-
-    /** TODO: MOVE TO INTERFACE
-     * @notice Struct containing an integrator's data.
-     * @param shares                The actual number of shares an integrator has (not the percentage).
-     * @param lastRewardBlock       Block number when rewards were last calculated
-     * @param rewardsPerShare       Accumulated rewards per share (scaled by 1e12 for precision).
-     * @param rewardDebt            Amount of rewards already claimed, prevents double claiming.
-     */
-    struct IntegratorData {
-        uint256 shares;
-        uint256 lastRewardBlock;
-        uint256 rewardsPerShare;
-        uint256 rewardDebt;
-    }
 
     // Constants TODO: DOUBLE CHECK FORMAT
     uint256 private constant PRECISION_FACTOR = 1e12;
     uint256 private constant PERCENTAGE_DIVISOR = 1e2;
 
     // State variables
-    PushCoreV3 public pushCoreV3;
-    IERC20 public pushToken; // TODO: DOUBLE CHECK if this is redudnat vis a vis inehritance tree
+    PushCoreV3 public override pushCoreV3;
+    IERC20 public override pushToken; // TODO: DOUBLE CHECK if this is redudnant vis a vis inehritance tree
 
-    uint256 public WALLET_FEE_POOL;
-    uint256 public HOLDER_FEE_POOL;
-    uint256 public WALLET_FP_TOTAL_SHARES;
+    uint256 public override WALLET_FEE_POOL;
+    uint256 public override HOLDER_FEE_POOL;
+    uint256 public override WALLET_FP_TOTAL_SHARES;
 
-    uint256 public WALLET_FEE_PERCENTAGE = 30; // TODO: DOUBLE CHECK FORMAT
-    uint256 public HOLDER_FEE_PERCENTAGE = 70; // TODO: DOUBLE CHECK FORMAT
+    uint256 public override WALLET_FEE_PERCENTAGE = 30; // TODO: DOUBLE CHECK FORMAT
+    uint256 public override HOLDER_FEE_PERCENTAGE = 70; // TODO: DOUBLE CHECK FORMAT
 
-    address public TREASURY_WALLET;
-    address public admin; // TODO: add way for governance to set admin
+    address public override TREASURY_WALLET;
+    address public override admin; // TODO: add way for governance to set admin
 
-    mapping(address => IntegratorData) public integrators;
-
-    // Events TODO: Move to Contract Interface
-    event Staked(address indexed user, uint256 amountStaked);
-    event Unstaked(address indexed user, uint256 amountUnstaked);
-    event RewardsHarvested(
-        address indexed user,
-        uint256 rewardAmount,
-        uint256 fromEpoch,
-        uint256 tillEpoch
-    );
-    event IntegratorAdded(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
-    event IntegratorRemoved(address indexed integratorAddress, uint256 shares, uint256 newTotalShares);
-    event IntegratorRewardsHarvested(address indexed integratorAddress, uint256 rewards);
-    event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
-
-    // TODO: Move to Contract Interface DOUBLE CHECK IF THAT IS THE STANDARD
-    modifier onlyGovernance() {
-        require(msg.sender == governance, "PushStaking: caller is not the governance");
-        _;
-    }
-
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "PushStaking: caller is not the admin");
-        _;
-    }
+    mapping(address => IntegratorData) public override integrators;
 
     // =========================================== CONSTRUCTOR ===========================================
-
     /**
      * @notice Initializes the PushStaking contract with the given addresses and sets up the initial
      *         state. Initializes `WALLET_FP_TOTAL_SHARES` to 100 and assigns the shares to the
@@ -148,7 +109,6 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     // =================================== INTEGRATOR STAKING FUNCTIONS ==================================
-
     /**
      * @notice Adds a new integrator with a specified percentage of total shares.
      *
@@ -159,7 +119,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @param _integratorAddress       The address of the new integrator to be added.
      * @param _sharePercentage         The percentage of total shares for the integrator.
      */
-    function addIntegrator(address _integratorAddress, uint256 _sharePercentage) external onlyGovernance {
+    function addIntegrator(address _integratorAddress, uint256 _sharePercentage) external override onlyGovernance {
         require(integrators[_integratorAddress].shares == 0, "PushStaking: already an integrator");
         require(_integratorAddress != address(0), "PushStaking: invalid address");
         require(_sharePercentage > 0 && _sharePercentage < 100, "PushStaking: invalid percentage");
@@ -185,7 +145,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *
      * @param _integratorAddress      The address of the integrator to be removed.
      */
-    function removeIntegrator(address _integratorAddress) external onlyGovernance {
+    function removeIntegrator(address _integratorAddress) external override onlyGovernance {
         require(integrators[_integratorAddress].shares > 0, "PushStaking: not an integrator");
         require(_integratorAddress != TREASURY_WALLET, "PushStaking: cannot remove treasury wallet");
 
@@ -207,16 +167,16 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @dev Integrators can call this function to collect any accumulated rewards up to the current
      *      block.
      */
-    function harvestIntegratorRewards() external whenNotPaused {
+    function harvestIntegratorRewards() external override whenNotPaused {
         _harvestIntegratorRewards(msg.sender);
     }
 
     // ================================== TOKEN HOLDER STAKING FUNCTIONS ================================
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Function to initialize the staking procedure in Core contract
      * @dev    Requires caller to deposit/stake 1 PUSH token to ensure staking pool is never zero.
      **/
-    function initializeStake() external whenNotPaused {
+    function initializeStake() external override whenNotPaused {
         require(
             genesisEpoch == 0,
             "PushCoreV3::initializeStake: Already Initialized"
@@ -227,24 +187,24 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         _stake(address(this), 1e18);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Function to allow users to stake in the protocol
      * @dev    Records total Amount staked so far by a particular user
      *         Triggers weight adjustents functions
      * @param  _amount represents amount of tokens to be staked
      **/
-    function stake(uint256 _amount) external whenNotPaused {
+    function stake(uint256 _amount) external override whenNotPaused {
         _stake(msg.sender, _amount);
         emit Staked(msg.sender, _amount);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Function to allow users to Unstake from the protocol
      * @dev    Allows stakers to claim rewards before unstaking their tokens
      *         Triggers weight adjustents functions
      *         Allows users to unstake all amount at once
      **/
-    function unstake() external whenNotPaused {
+    function unstake() external override whenNotPaused {
         require(
             block.number >
                 userFeesInfo[msg.sender].lastStakedBlock + epochDuration,
@@ -271,43 +231,43 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         emit Unstaked(msg.sender, stakedAmount);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Allows users to harvest/claim their earned rewards from the protocol
      * @dev    Computes nextFromEpoch and currentEpoch and uses them as startEPoch and endEpoch respectively.
      *         Rewards are claculated from start epoch till endEpoch(currentEpoch - 1).
      *         Once calculated, user's total claimed rewards and nextFromEpoch details is updated.
      **/
-    function harvestAll() public whenNotPaused {
+    function harvestAll() public override whenNotPaused {
         uint256 currentEpoch = lastEpochRelative(genesisEpoch, block.number);
 
         uint256 rewards = _harvest(msg.sender, currentEpoch - 1);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(msg.sender, rewards);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Allows paginated harvests for users between a particular number of epochs.
      * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
      * @dev    _tillEpoch should never be equal to currentEpoch.
      *         Transfers rewards to caller and updates user's details.
      **/
-    function harvestPaginated(uint256 _tillEpoch) external whenNotPaused {
+    function harvestPaginated(uint256 _tillEpoch) external override whenNotPaused {
         uint256 rewards = _harvest(msg.sender, _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(msg.sender, rewards);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Allows Push Governance to harvest/claim the earned rewards for its stake in the protocol
      * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
      * @dev    only accessible by Push Admin
      *         Unlike other harvest functions, this is designed to transfer rewards to Push Governance.
      **/
-    function daoHarvestPaginated(uint256 _tillEpoch) external onlyGovernance {
+    function daoHarvestPaginated(uint256 _tillEpoch) external override onlyGovernance {
         uint256 rewards = _harvest(address(this), _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(governance, rewards);
     }
 
     // ========================================== VIEW FUNCTIONS =========================================
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Calculates and returns the claimable reward amount for a user at a given EPOCH ID.
      * @dev    Formulae for reward calculation:
      *         rewards = ( userStakedWeight at Epoch(n) * avalailable rewards at EPOCH(n) ) / totalStakedWeight at EPOCH(n)
@@ -315,6 +275,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     function calculateEpochRewards(address _user, uint256 _epochId)
         public
         view
+        override
         returns (uint256 rewards)
     {
         rewards = userFeesInfo[_user]
@@ -323,12 +284,13 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
             .div(epochToTotalStakedWeight[_epochId]);
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Returns the epoch ID based on the start and end block numbers passed as input
      **/
     function lastEpochRelative(uint256 _from, uint256 _to)
         public
         view
+        override
         returns (uint256)
     {
         require(
@@ -344,7 +306,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @return                         The total amount of protocol pool fees currently available in
      *                                 the PushCoreV3 contract.
      */
-    function getProtocolPoolFees() public view returns (uint256) {
+    function getProtocolPoolFees() public view override returns (uint256) {
         return pushCoreV3.PROTOCOL_POOL_FEES();
     }
 
@@ -359,7 +321,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *
      * @return pending                 The calculated amount of pending rewards for the integrator.
      */
-    function pendingIntegratorRewards(address _integratorAddress) external view returns (uint256 pending) {
+    function pendingIntegratorRewards(address _integratorAddress) external view override returns (uint256 pending) {
         IntegratorData storage integrator = integrators[_integratorAddress];
         if (integrator.shares == 0) {
             return 0;
@@ -384,7 +346,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     // ========================================= HELPER FUNCTIONS =======================================
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Function to return User's Push Holder weight based on amount being staked & current block number
      **/
     function _returnPushTokenWeight(
@@ -398,7 +360,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
             );
     }
 
-    /** // TODO: Add Natspec
+    /** // TODO: Improve Natspec
      * @notice Internal harvest function that is called for all types of harvest procedure.
      * @param  _user       - The user address for which the rewards will be calculated.
      * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
@@ -442,7 +404,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         emit RewardsHarvested(_user, rewards, nextFromEpoch, _tillEpoch);
     }
 
-    /** // TODO: Revisit Description
+    /** // TODO: Improve Description
      * @notice Internal function that allows setting up the rewards for specific EPOCH IDs
      * @dev    Initializes (sets reward) for every epoch ID that falls between the lastEpochInitialized and currentEpoch
      *         Reward amount for specific EPOCH Ids depends on newly available Protocol_Pool_Fees.
@@ -502,7 +464,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         lastTotalStakeEpochInitialized = _currentEpoch;
     }
 
-    /** // TODO: Revisit Natspec
+    /** // TODO: Improve Natspec
      * @notice  This functions helps in adjustment of user's as well as totalWeigts, both of which are imperative for reward calculation at a particular epoch.
      * @dev     Enables adjustments of user's stakedWeight, totalStakedWeight, epochToTotalStakedWeight as well as epochToTotalStakedWeight.
      *          triggers _setupEpochsReward() to adjust rewards for every epoch till the current epoch
@@ -566,7 +528,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
         }
     }
 
-    /** // TODO: Revisit Natspec
+    /** // TODO: Improve Natspec
      * @notice Internal function to stake tokens for a user
      * @dev Calculates user weight, transfers tokens, and updates staking info
      * @param _staker Address of the staking user
@@ -620,7 +582,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     }
 
     /**
-     * @notice Internal function to calculate and distribute pending rewards for an integrator.
+     * @notice Function to calculate and distribute pending rewards for an integrator.
      *
      * @dev This function:
      *      1. Updates rewards based on new blocks mined since last harvest
@@ -699,7 +661,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *
      * @param _rewardAmount             The amount of PUSH tokens to be added to the protocol pool fees.
      */
-    function addPoolFees(uint256 _rewardAmount) external onlyAdmin {
+    function addPoolFees(uint256 _rewardAmount) external override onlyAdmin {
         IERC20(PUSH_TOKEN_ADDRESS).safeTransferFrom(
             msg.sender,
             address(this),
@@ -715,7 +677,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *      paused state, preventing functions like staking and reward distribution from
      *      being executed until unpaused.
      */
-    function pauseContract() external onlyAdmin {
+    function pauseContract() external override onlyAdmin {
         _pause();
     }
 
@@ -725,7 +687,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @dev This function can only be called by the contract admin. It lifts the paused
      *      state of the contract, allowing staking and other functions to be resumed.
      */
-    function unPauseContract() external onlyAdmin {
+    function unPauseContract() external override onlyAdmin {
         _unpause();
     }
 
@@ -737,7 +699,7 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      *
      * @param _newAdmin                 The address of the new admin to be assigned.
      */
-    function setAdmin(address _newAdmin) external onlyGovernance {
+    function setAdmin(address _newAdmin) external override onlyGovernance {
         require(_newAdmin != address(0), "PushStaking: invalid admin address");
         require(_newAdmin != admin, "PushStaking: new admin same as current admin");
 
@@ -757,12 +719,24 @@ contract PushStaking is PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
      * @param _walletFeePercentage      The new percentage of fees to be allocated to the wallet fee pool.
      * @param _holderFeePercentage      The new percentage of fees to be allocated to the holder fee pool.
      */
-    function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public onlyAdmin {
+    function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public override onlyAdmin {
         require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DIVISOR, "PushStaking: percentages must add up to 100");
 
         WALLET_FEE_PERCENTAGE = _walletFeePercentage;
         HOLDER_FEE_PERCENTAGE = _holderFeePercentage;
 
         _updateFeePools();
+    }
+
+    // TODO: Add Natspec
+    modifier onlyGovernance() {
+        require(msg.sender == governance, "PushStaking: caller is not the governance");
+        _;
+    }
+
+    // TODO: Add Natspec
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "PushStaking: caller is not the admin");
+        _;
     }
 }
