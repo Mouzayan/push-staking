@@ -728,13 +728,11 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         _updateFeePools();
     }
 
-    // TODO: Add Natspec
     modifier onlyGovernance() {
         require(msg.sender == governance, "PushStaking: caller is not the governance");
         _;
     }
 
-    // TODO: Add Natspec
     modifier onlyAdmin() {
         require(msg.sender == admin, "PushStaking: caller is not the admin");
         _;

@@ -1,41 +1,50 @@
 pragma solidity >=0.6.0 <0.7.0;
 pragma experimental ABIEncoderV2;
 
-/** // TODO: REVISIT THIS DESCRIPTION
- * EPNS Core is the main protocol that deals with the imperative
- * features and functionalities like Channel Creation, pushChannelAdmin etc.
- *
- * This protocol will be specifically deployed on Ethereum Blockchain while the Communicator
- * protocols can be deployed on Multiple Chains.
- * The EPNS Core is more inclined towards the storing and handling the Channel related
- * Functionalties.
- **/
-import "./PushCoreStorageV1_5.sol";
-import "./PushCoreStorageV2.sol";
-import "../PushStaking/PushStaking.sol";
-import "../interfaces/IPUSH.sol";
-import "../interfaces/IUniswapV2Router.sol";
-import "../interfaces/IEPNSCommV1.sol";
-import "../interfaces/ITokenBridge.sol";
-
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
+import "../interfaces/IPUSH.sol";
+import "../interfaces/IUniswapV2Router.sol";
+import "../interfaces/IEPNSCommV1.sol";
+import "../interfaces/ITokenBridge.sol";
+import "../interfaces/IPushStaking.sol";
+
+import "./PushCoreStorageV3.sol";
+import "./PushCoreStorageV2.sol";
+import "./PushCoreStorageV1_5.sol";
+
+/**
+ * @title PushCoreV3
+ * @notice PushCoreV3 implements an upgrade to PushCoreV2, introducing a more modular
+ *         contract architecture. The upgrade separates the core protocol logic from
+ *         staking and fee distribution mechanics. PushCoreV3 is primarily focused on
+ *         storing and managing channel-related functionality.
+ *
+ * @dev PushCoreV2 handled all core protocol functionality, including channel management,
+ *      fee collection, epoch management, and reward distribution. It also stored
+ *      and managed `PROTOCOL_POOL_FEES`, which contributed to staking rewards.
+ *      PushCoreV3 retains the core functionalities related to channel and notification
+ *      management but offloads all staking-related functionality to a dedicated
+ *      `PushStaking` contract.
+ *
+ *      PushCoreV3 includes 2 additional functions to interface with the PushStaking:
+ *      - `setPushStaking()`: Sets the address of the `PushStaking` contract.
+ *      - `transferProtocolFees()`: Transfers protocol fees to the `PushStaking` contract
+ *        for staking rewards distribution.
+ */
 contract PushCoreV3 is
     Initializable,
-    PushCoreStorageV1_5,
     PausableUpgradeable,
-    PushCoreStorageV2
+    PushCoreStorageV3,
+    PushCoreStorageV2,
+    PushCoreStorageV1_5
 {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-
-    // TODO: Move this to Storage contract
-    PushStaking public pushStaking;
-    address public pushStakingAddress;
 
     /* ***************
         EVENTS
@@ -791,14 +800,16 @@ contract PushCoreV3 is
         emit ChatIncentiveClaimed(msg.sender, _amount);
     }
 
-    /* ************** // TODO: REVISIT THIS DESCRIPTION
-    => STAKING INTERFACING FUNCTIONALTY <=
+    /* **************
+    => STAKING INTERFACE FUNCTIONALTY <=
     *************** */
 
     // TODO: add Natspec
     function setPushStaking(address _pushStakingAddress) external returns (bool) {
         require(msg.sender == governance, "PushCoreV2: caller is not the governance");
-        pushStaking = PushStaking(_pushStakingAddress);
+        pushStaking = _pushStakingAddress;
+        pushStakingAddress = _pushStakingAddress;
+        return true;
     }
 
     // TODO: add Natspec
