@@ -20,6 +20,10 @@ import "../PushCore/PushCoreStorageV2.sol";
  *         wallet integrators. Previously, only PUSH token holders could participate in staking.
  *         With this upgrade, projects that integrate with the Push Protocol can now use their
  *         wallet addresses to stake and earn a share of protocol fees.
+ *         Governance adds integrator wallets to the contract, and by doing so puts them in a staking
+ *         position. By removing an integrator wallet from the contract, governance would be putting
+ *         the integrator wallet in a unstaking position.
+ *
  *         The contract can be paused by an admin. It implements OpenZeppelin's Pausable to halt
  *         operations during critical security incidents.
  *
@@ -100,7 +104,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         TREASURY_WALLET = _treasuryWallet;
 
         // Initialize treasury wallet with 100 shares
-        WALLET_FP_TOTAL_SHARES = 100;
+        WALLET_FP_TOTAL_SHARES = 100; // TODO: MAKE 1 MM SHARES!!!!!
         IntegratorData storage treasury = integrators[TREASURY_WALLET];
         treasury.shares = WALLET_FP_TOTAL_SHARES;
         treasury.lastRewardBlock = block.number;
@@ -108,7 +112,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         emit IntegratorAdded(TREASURY_WALLET, WALLET_FP_TOTAL_SHARES, WALLET_FP_TOTAL_SHARES);
     }
 
-    // =================================== INTEGRATOR STAKING FUNCTIONS ==================================
+    // ================================ WALLET INTEGRATOR STAKING FUNCTIONS ===============================
     /**
      * @notice Adds a new integrator with a specified percentage of total shares.
      *
