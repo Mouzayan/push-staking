@@ -60,30 +60,29 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    // Constants TODO: DOUBLE CHECK FORMAT
     uint256 private constant PRECISION_FACTOR = 1e12;
-    uint256 private constant PERCENTAGE_DIVISOR = 1e2;
+    uint256 private constant PERCENTAGE_DENOMINATOR = 1e4;
 
     // State variables
     PushCoreV3 public override pushCoreV3;
-    IERC20 public override pushToken; // TODO: DOUBLE CHECK if this is redudnant vis a vis inehritance tree
+    IERC20 public override pushToken;
 
     uint256 public override WALLET_FEE_POOL;
     uint256 public override HOLDER_FEE_POOL;
     uint256 public override WALLET_FP_TOTAL_SHARES;
 
-    uint256 public override WALLET_FEE_PERCENTAGE = 30; // TODO: DOUBLE CHECK FORMAT
-    uint256 public override HOLDER_FEE_PERCENTAGE = 70; // TODO: DOUBLE CHECK FORMAT
+    uint256 public override WALLET_FEE_PERCENTAGE = 3e3;
+    uint256 public override HOLDER_FEE_PERCENTAGE = 7e3;
 
     address public override TREASURY_WALLET;
-    address public override admin; // TODO: add way for governance to set admin
+    address public override admin;
 
     mapping(address => IntegratorData) public override integrators;
 
     // =========================================== CONSTRUCTOR ===========================================
     /**
      * @notice Initializes the PushStaking contract with the given addresses and sets up the initial
-     *         state. Initializes `WALLET_FP_TOTAL_SHARES` to 100 and assigns the shares to the
+     *         state. Initializes `WALLET_FP_TOTAL_SHARES` to 1 million and assigns the shares to the
      *         `TREASURY_WALLET`.
      *
      * @param _pushCoreV3Address        The address of the PushCoreV3 contract.
@@ -103,8 +102,8 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         admin = _admin;
         TREASURY_WALLET = _treasuryWallet;
 
-        // Initialize treasury wallet with 100 shares
-        WALLET_FP_TOTAL_SHARES = 100; // TODO: MAKE 1 MM SHARES!!!!!
+        // Initialize treasury wallet with 1 million shares
+        WALLET_FP_TOTAL_SHARES = 1e6;
         IntegratorData storage treasury = integrators[TREASURY_WALLET];
         treasury.shares = WALLET_FP_TOTAL_SHARES;
         treasury.lastRewardBlock = block.number;
@@ -126,10 +125,10 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     function addIntegrator(address _integratorAddress, uint256 _sharePercentage) external override onlyGovernance {
         require(integrators[_integratorAddress].shares == 0, "PushStaking: already an integrator");
         require(_integratorAddress != address(0), "PushStaking: invalid address");
-        require(_sharePercentage > 0 && _sharePercentage < 100, "PushStaking: invalid percentage");
+        require(_sharePercentage > 0 && _sharePercentage < PERCENTAGE_DENOMINATOR, "PushStaking: invalid percentage");
 
-        // Formula to calculate new shares: (x / (x + total_shares)) * 100 = sharePercentage
-        uint256 newShares = (_sharePercentage * WALLET_FP_TOTAL_SHARES) / (100 - _sharePercentage);
+        // Formula to calculate new shares: (x / (x + total_shares)) * 10_000 = sharePercentage
+        uint256 newShares = (_sharePercentage * WALLET_FP_TOTAL_SHARES) / (PERCENTAGE_DENOMINATOR - _sharePercentage);
 
         IntegratorData storage integrator = integrators[_integratorAddress];
         integrator.shares = newShares;
@@ -664,7 +663,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         uint256 feesToTransfer = pushCoreV3.PROTOCOL_POOL_FEES();
         pushCoreV3.transferProtocolFees(feesToTransfer);
 
-        uint256 walletFeeAmount = feesToTransfer.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
+        uint256 walletFeeAmount = feesToTransfer.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DENOMINATOR);
         uint256 holderFeeAmount = feesToTransfer.sub(walletFeeAmount);
 
         WALLET_FEE_POOL = WALLET_FEE_POOL.add(walletFeeAmount);
@@ -737,8 +736,8 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     function _updateFeePools() internal {
         uint256 totalFees = getProtocolPoolFees();
 
-        WALLET_FEE_POOL = totalFees.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
-        HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
+        WALLET_FEE_POOL = totalFees.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DENOMINATOR);
+        HOLDER_FEE_POOL = totalFees.mul(HOLDER_FEE_PERCENTAGE).div(PERCENTAGE_DENOMINATOR);
     }
 
     // ===================================== RESTRICTED FUNCTIONS =======================================
@@ -809,7 +808,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
      * @param _holderFeePercentage      The new percentage of fees to be allocated to the holder fee pool.
      */
     function updateFeePoolPercentages(uint256 _walletFeePercentage, uint256 _holderFeePercentage) public override onlyAdmin {
-        require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DIVISOR, "PushStaking: percentages must add up to 100");
+        require(_walletFeePercentage.add(_holderFeePercentage) == PERCENTAGE_DENOMINATOR, "PushStaking: percentages must add up to 10_000");
 
         WALLET_FEE_PERCENTAGE = _walletFeePercentage;
         HOLDER_FEE_PERCENTAGE = _holderFeePercentage;
