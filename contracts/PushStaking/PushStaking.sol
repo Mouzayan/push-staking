@@ -16,41 +16,41 @@ import "../PushCore/PushCoreStorageV2.sol";
 /**
  * @title PushStaking
  * @author em_mutable
- * @notice This contract implements an advancement in the Push Protocol staking mechanism,
- *         facilitating staking for both PUSH token holders and wallet integrators.
+ * @notice This contract upgrades the Push Protocol staking mechanism by adding staking support for
+ *         wallet integrators. Previously, only PUSH token holders could participate in staking.
+ *         With this upgrade, projects that integrate with the Push Protocol can now use their
+ *         wallet addresses to stake and earn a share of protocol fees.
+ *         The contract can be paused by an admin. It implements OpenZeppelin's Pausable to halt
+ *         operations during critical security incidents.
  *
- *         The contract can be paused by an admin in emergency situations. It implements
- *         OpenZeppelin's Pausable to halt operations during critical security incidents
- *         or when vulnerabilities are detected.
+ * @dev The contract's primary dependency is the ability to read the `PROTOCOL_POOL_FEE` state
+ *      variable from the PushCoreV3 contract.
  *
- * @dev The contract operates independently from the PushCore contract, with its primary dependency
- *      being the ability to read the `PROTOCOL_POOL_FEE` state variable from the core contract.
+ * ContractKey Features:
+ *   - Supports staking for both PUSH token holders and wallets that integrate Push Protocol features.
+ *   - Allows governance-based adjustments, ensuring adaptability to evolving protocol needs.
+ *   - Operates independently from PushCore.
+ *   - Reads `PROTOCOL_POOL_FEE` from PushCore for reward calculations and distribution.
+ *   - Allocates protocol fees for staking rewards into two staking pools:
+ *     - WALLET_FEE_POOL for wallet integrator rewards
+ *     - HOLDER_FEE_POOL for token holder rewards
+ *   - Calculates and distributes rewards to stakers.
+ *   - Integrator rewards are calculated based on a share percentage of the total WALLET_FEE_POOL
+ *     shares. The share percentage amount is approved by governance.
+ *     Formula for integrator reward share (`x`) calculation:
+ *     - (x / (x + total_shares)) * 100 = sharePercentage
+ *     Solving for `x` gives the required number of shares to achieve the specified `sharePercentage`.
  *
- * Key Features:
- *          - Dual Actor Staking: Supports staking for both PUSH token holders and wallets
- *            that integrate Push Protocol features.
- *          - Standalone Operation: Functions as a separate contract from PushCore, enhancing
- *            modularity and the separation of concerns.
- *          - Fee Pool Integration: Interacts with the core protocol's fee pool by reading the
- *            `PROTOCOL_POOL_FEE` state variable from Core, for reward calculations and distributions.
- *          - Reward Distribution: Calculates and distributes rewards to stakers.
- *          - Governance and Flexibility: Allows for future adjustments and enhancements through
- *            community governance, ensuring the staking mechanism remains adaptable to evolving
- *            protocol needs.
+ * Staking Mechanisms:
+ *   1. Integrator Wallet Staking:
+ *      - Allocates shares to integrator wallets for earning a portion of protocol fees.
+ *      - Push Treasury wallet holds base shares.
+ *      - Integrators harvest rewards from `WALLET_FEE_POOL` (30% of protocol fees at contract deployment).
  *
- *         1. Integrator Wallet Staking:
- *            - Allows protocol integrators to receive a share of protocol fees
- *            - Uses a share-based system where integrators are allocated shares
- *            - Treasury wallet maintains base shares
- *            - Integrators can harvest rewards based on their share allocation
- *            - Rewards come from WALLET_FEE_POOL (30% of protocol fees at contract deployment)
- *
- *         2. Token Holder Staking:
- *            - Allows PUSH token holders to stake tokens and earn rewards
- *            - Uses an epoch-based reward system
- *            - Rewards are calculated based on stake weight and duration
- *            - Requires minimum 1 epoch duration for staking
- *            - Rewards come from HOLDER_FEE_POOL (70% of protocol fees at contract deployment)
+ *   2. Token Holder Staking:
+ *      - Enables PUSH token holders to stake and earn rewards based on stake weight and duration.
+ *      - Uses an epoch-based reward system, with a minimum 1-epoch staking duration.
+ *      - Rewards come from `HOLDER_FEE_POOL` (70% of protocol fees at contract deployment).
  */
 contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pausable {
     using SafeMath for uint256;
@@ -124,7 +124,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         require(_integratorAddress != address(0), "PushStaking: invalid address");
         require(_sharePercentage > 0 && _sharePercentage < 100, "PushStaking: invalid percentage");
 
-        // Formula to calculate new shares: (x / (x + total_shares)) * 100 = desired_percentage
+        // Formula to calculate new shares: (x / (x + total_shares)) * 100 = sharePercentage
         uint256 newShares = (_sharePercentage * WALLET_FP_TOTAL_SHARES) / (100 - _sharePercentage);
 
         IntegratorData storage integrator = integrators[_integratorAddress];

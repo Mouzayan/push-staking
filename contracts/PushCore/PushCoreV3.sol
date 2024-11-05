@@ -811,7 +811,7 @@ contract PushCoreV3 is
      * @return bool                     Returns `true` if the address was successfully set.
      */
     function setPushStaking(address _pushStakingAddress) external returns (bool) {
-        require(msg.sender == governance, "PushCoreV2: caller is not the governance");
+        onlyGovernance();
         pushStakingAddress = _pushStakingAddress;
 
         return true;

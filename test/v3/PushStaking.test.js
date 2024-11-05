@@ -1759,3 +1759,7 @@ describe("PushCoreV3 Protocol", function () {
     });
   });
 });
+// Tests to add:
+// 1. test that transferProtocolFees works and is only called by the PushStaking contract
+// 2. test that transferProtocolFees require statement are met
+// 3.
