@@ -172,10 +172,16 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     }
 
     // ================================== TOKEN HOLDER STAKING FUNCTIONS ================================
-    /** // TODO: Improve Natspec
-     * @notice Function to initialize the staking procedure in Core contract
-     * @dev    Requires caller to deposit/stake 1 PUSH token to ensure staking pool is never zero.
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Initializes the staking mechanism by setting the genesis epoch and performing an
+     *         initial stake. The contract must not be paused.
+     *
+     * @dev Sets `genesisEpoch` to the current block number and stakes a nominal amount to ensure
+     *      the staking pool is active. Can only be called once.
+     */
     function initializeStake() external override whenNotPaused {
         require(
             genesisEpoch == 0,
@@ -187,23 +193,33 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         _stake(address(this), 1e18);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Function to allow users to stake in the protocol
-     * @dev    Records total Amount staked so far by a particular user
-     *         Triggers weight adjustents functions
-     * @param  _amount represents amount of tokens to be staked
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Allows a user to stake a specified amount of PUSH tokens. The contract must not be
+     *         paused.
+     *
+     * @dev    Records total amount staked so far by a particular user.
+     *         Triggers weight adjustment functions.
+     *
+     * @param _amount                    The amount of PUSH tokens to be staked by the caller.
+     */
     function stake(uint256 _amount) external override whenNotPaused {
         _stake(msg.sender, _amount);
         emit Staked(msg.sender, _amount);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Function to allow users to Unstake from the protocol
-     * @dev    Allows stakers to claim rewards before unstaking their tokens
-     *         Triggers weight adjustents functions
-     *         Allows users to unstake all amount at once
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Allows a user to unstake their entire staked amount after completing at least one epoch.
+     *         The contract must not be paused.
+     *
+     * @dev Harvests all pending rewards, transfers the staked amount to the user, and updates
+     *      the user's staking record and total staked amount.
+     */
     function unstake() external override whenNotPaused {
         require(
             block.number >
@@ -231,12 +247,16 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         emit Unstaked(msg.sender, stakedAmount);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Allows users to harvest/claim their earned rewards from the protocol
-     * @dev    Computes nextFromEpoch and currentEpoch and uses them as startEPoch and endEpoch respectively.
-     *         Rewards are claculated from start epoch till endEpoch(currentEpoch - 1).
-     *         Once calculated, user's total claimed rewards and nextFromEpoch details is updated.
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Allows users to harvest all their accumulated rewards up to the last completed epoch.
+     *         The contract must not be paused.
+     *
+     * @dev This function calculates and transfers all rewards available to the caller up to the
+     *      current epoch minus one.
+     */
     function harvestAll() public override whenNotPaused {
         uint256 currentEpoch = lastEpochRelative(genesisEpoch, block.number);
 
@@ -244,34 +264,53 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(msg.sender, rewards);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Allows paginated harvests for users between a particular number of epochs.
-     * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
-     * @dev    _tillEpoch should never be equal to currentEpoch.
-     *         Transfers rewards to caller and updates user's details.
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Allows paginated harvests for users between a particular number of epochs
+     *         and transfers the harvested rewards to the caller's address.
+     *
+     * @param _tillEpoch                The last epoch up to which rewards should be counted.
+     */
     function harvestPaginated(uint256 _tillEpoch) external override whenNotPaused {
         uint256 rewards = _harvest(msg.sender, _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(msg.sender, rewards);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Allows Push Governance to harvest/claim the earned rewards for its stake in the protocol
-     * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
-     * @dev    only accessible by Push Admin
-     *         Unlike other harvest functions, this is designed to transfer rewards to Push Governance.
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Allows Push Governance to harvest/claim the earned rewards for its stake in the
+     *         protocol.
+     *
+     * @dev This function calls the internal `_harvest` function for the protocol and transfers the
+     *      harvested rewards to the governance address. Only accessible by Push Governance,
+     *      transfers rewards to Push Governance.
+     *
+     * @param _tillEpoch                The last epoch up to which rewards should be counted.
+     */
     function daoHarvestPaginated(uint256 _tillEpoch) external override onlyGovernance {
         uint256 rewards = _harvest(address(this), _tillEpoch);
         IERC20(PUSH_TOKEN_ADDRESS).safeTransfer(governance, rewards);
     }
 
     // ========================================== VIEW FUNCTIONS =========================================
-    /** // TODO: Improve Natspec
-     * @notice Calculates and returns the claimable reward amount for a user at a given EPOCH ID.
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Calculates the claimable reward amount for a user at a given EPOCH ID.
+     *
      * @dev    Formulae for reward calculation:
      *         rewards = ( userStakedWeight at Epoch(n) * avalailable rewards at EPOCH(n) ) / totalStakedWeight at EPOCH(n)
-     **/
+     *
+     * @param _user                      The address of the user for whom rewards are being calculated.
+     * @param _epochId                   The epoch ID for which rewards are calculated.
+     *
+     * @return rewards                   The calculated reward amount for the user for the specified epoch.
+     */
     function calculateEpochRewards(address _user, uint256 _epochId)
         public
         view
@@ -284,9 +323,17 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
             .div(epochToTotalStakedWeight[_epochId]);
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Returns the epoch ID based on the start and end block numbers passed as input
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Calculates an epoch ID based on the specified start and end block numbers.
+     *
+     * @param _from                     The starting block number.
+     * @param _to                       The ending block number.
+     *
+     * @return uint256                  The calculated epoch number.
+     */
     function lastEpochRelative(uint256 _from, uint256 _to)
         public
         view
@@ -301,7 +348,10 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     }
 
     /**
-     * @notice Retrieves the current total amount of `PROTOCOL_POOL_FEES`, from the PushCoreV3 contract.
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Retrieves the current total amount of `PROTOCOL_POOL_FEES`, from the PushCoreV3 contract.
      *
      * @return                         The total amount of protocol pool fees currently available in
      *                                 the PushCoreV3 contract.
@@ -311,7 +361,10 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     }
 
     /**
-     * @notice Calculates the pending rewards for a specified integrator.
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Calculates the pending rewards for a specified integrator.
      *
      * @dev This function returns the amount of rewards that are currently pending and can be claimed
      *      by the specified integrator.
@@ -346,9 +399,19 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     }
 
     // ========================================= HELPER FUNCTIONS =======================================
-    /** // TODO: Improve Natspec
-     * @notice Function to return User's Push Holder weight based on amount being staked & current block number
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Calculates the staking weight for a given account based on the staked amount and
+     *         the specified block number.
+     *
+     * @param _account                  The address of the user whose weight is being calculated.
+     * @param _amount                   The amount of PUSH tokens staked by the user.
+     * @param _atBlock                  The block number at which the weight is calculated.
+     *
+     * @return uint256                  The calculated staking weight for the user.
+     */
     function _returnPushTokenWeight(
         address _account,
         uint256 _amount,
@@ -360,13 +423,21 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
             );
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Internal harvest function that is called for all types of harvest procedure.
-     * @param  _user       - The user address for which the rewards will be calculated.
-     * @param  _tillEpoch   - the end epoch number till which rewards shall be counted.
-     * @dev    _tillEpoch should never be equal to currentEpoch.
-     *         Transfers rewards to caller and updates user's details.
-     **/
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Harvests accumulated rewards for a user up to a specified epoch.
+     *
+     * @dev Calculates the claimable rewards for a user from their last claimed epoch up to
+     *      `_tillEpoch`. It resets the user's weight, adjusts their staking records, and
+     *      updates the last claimed block for accurate future reward calculations.
+     *
+     * @param _user                     The address of the user harvesting rewards.
+     * @param _tillEpoch                The last epoch up to which rewards should be harvested.
+     *
+     * @return rewards                  The total amount of rewards harvested for the user.
+     */
     function _harvest(address _user, uint256 _tillEpoch)
         internal
         returns (uint256 rewards)
@@ -404,13 +475,20 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         emit RewardsHarvested(_user, rewards, nextFromEpoch, _tillEpoch);
     }
 
-    /** // TODO: Improve Description
-     * @notice Internal function that allows setting up the rewards for specific EPOCH IDs
-     * @dev    Initializes (sets reward) for every epoch ID that falls between the lastEpochInitialized and currentEpoch
-     *         Reward amount for specific EPOCH Ids depends on newly available Protocol_Pool_Fees.
-                - If no new fees was accumulated, rewards for particular epoch ids can be zero
-                - Records the Pool_Fees value used as rewards.
-                - Records the last epoch id whose rewards were set.
+    /**
+     * @notice Function moved from PushCoreV2 and revised to pull protocol rewards into
+     *         the holder fee pool.
+     *
+     *         Sets up rewards and total staked weight for token holders for each epoch.
+     *
+     * @dev This function calculates and assigns rewards for the current epoch based on the
+     *      available rewards in the token holder fee pool `HOLDER_FEE_POOL`. If multiple
+     *      epochs have passed since the last epoch initialization, it backfills the total
+     *      staked weight for those epochs to maintain consistency.
+     *
+     * @param _userWeight               The staking weight of the current user, based on their staked
+     *                                  amount and block number.
+     * @param _currentEpoch             The current epoch number, calculated based on the block number.
      */
     function _setupEpochsRewardAndWeights(
         uint256 _userWeight,
@@ -464,25 +542,23 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         lastTotalStakeEpochInitialized = _currentEpoch;
     }
 
-    /** // TODO: Improve Natspec
-     * @notice  This functions helps in adjustment of user's as well as totalWeigts, both of which are imperative for reward calculation at a particular epoch.
-     * @dev     Enables adjustments of user's stakedWeight, totalStakedWeight, epochToTotalStakedWeight as well as epochToTotalStakedWeight.
-     *          triggers _setupEpochsReward() to adjust rewards for every epoch till the current epoch
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
      *
-     *          Includes 2 main cases of weight adjustments
-     *          1st Case: User stakes for the very first time:
-     *              - Simply update userFeesInfo, totalStakedWeight and epochToTotalStakedWeight of currentEpoch
+     *         Adjusts the user's staking weight and updates the total stake weight based on
+     *         the current epoch.
      *
-     *          2nd Case: User is NOT staking for first time - 2 Subcases
-     *              2.1 Case: User stakes again but in Same Epoch
-     *                  - Increase user's stake and totalStakedWeight
-     *                  - Record the epochToUserStakedWeight for that epoch
-     *                  - Record the epochToTotalStakedWeight of that epoch
+     * @dev This internal function updates the staking record for a user based on their
+     *      staking weight and the current epoch. If the user is staking for the first time,
+     *      it initializes their staked weight. For subsequent stakes, it adjusts the weight
+     *      depending on whether the stake was made in the same epoch or a different epoch.
+     *      The function also updates the global epoch-specific staking weights for accurate
+     *      reward distribution.
      *
-     *              2.2 Case: - User stakes again but in different Epoch
-     *                  - Update the epochs between lastStakedEpoch & (currentEpoch - 1) with the old staked weight amounts
-     *                  - While updating epochs between lastStaked & current Epochs, if any epoch has zero value for totalStakedWeight, update it with current totalStakedWeight value of the protocol
-     *                  - For currentEpoch, initialize the epoch id with updated weight values for epochToUserStakedWeight & epochToTotalStakedWeight
+     * @param _user                     The address of the user whose stake is being adjusted.
+     * @param _userWeight               The staking weight of the user, based on their staked
+     *                                  amount and the block number.
      */
     function _adjustUserAndTotalStake(address _user, uint256 _userWeight)
         internal
@@ -491,11 +567,11 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         _setupEpochsRewardAndWeights(_userWeight, currentEpoch);
         uint256 userStakedWeight = userFeesInfo[_user].stakedWeight;
 
-        // Initiating 1st Case: User stakes for first time
+        // user stakes for first time
         if (userStakedWeight == 0) {
             userFeesInfo[_user].stakedWeight = _userWeight;
         } else {
-            // Initiating 2.1 Case: User stakes again but in Same Epoch
+            // user is staking again but in same epoch
             uint256 lastStakedEpoch = lastEpochRelative(
                 genesisEpoch,
                 userFeesInfo[_user].lastStakedBlock
@@ -505,7 +581,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
                     userStakedWeight +
                     _userWeight;
             } else {
-                // Initiating 2.2 Case: User stakes again but in Different Epoch
+                // user is staking again but in a different epoch
                 for (uint256 i = lastStakedEpoch; i <= currentEpoch; i++) {
                     if (i != currentEpoch) {
                         userFeesInfo[_user].epochToUserStakedWeight[
@@ -528,11 +604,21 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
         }
     }
 
-    /** // TODO: Improve Natspec
-     * @notice Internal function to stake tokens for a user
-     * @dev Calculates user weight, transfers tokens, and updates staking info
-     * @param _staker Address of the staking user
-     * @param _amount Amount of tokens to stake
+    /**
+     * @notice Function moved from PushCoreV2 to PushStaking as part of extracting and upgrading
+     *         the staking mechanism into a separate contract.
+     *
+     *         Stakes a specified amount of PUSH tokens on behalf of the given user.
+     *
+     * @dev This function updates a user's stake and adjusts the protocol's staking
+     *      records. The staker's weight is calculated based on the current epoch, and
+     *      their staked amount is added to `totalStakedAmount`. It adjusts staker
+     *      and total stake weights for reward distribution.
+     *      Caller must have approved the contract to transfer PUSH token `_amount` on
+     *      their behalf.
+     *
+     * @param _staker                   The address of the user's tokens being staked.
+     * @param _amount                   The amount of PUSH tokens to be staked.
      */
     function _stake(address _staker, uint256 _amount) private {
         uint256 currentEpoch = lastEpochRelative(genesisEpoch, block.number);
@@ -559,7 +645,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
             ? genesisEpoch
             : userFeesInfo[_staker].lastClaimedBlock;
         totalStakedAmount += _amount;
-        // Adjust user and total rewards, piggyback method
+        // Adjust user and total rewards
         _adjustUserAndTotalStake(_staker, userWeight);
     }
 
@@ -652,7 +738,6 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
     }
 
     // ===================================== RESTRICTED FUNCTIONS =======================================
-
     /**
      * @notice Adds a specified amount of rewards to the protocol pool fees.
      *
