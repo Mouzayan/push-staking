@@ -19,22 +19,18 @@ import "./PushCoreStorageV1_5.sol";
 
 /**
  * @title PushCoreV3
- * @notice PushCoreV3 implements an upgrade to PushCoreV2, introducing a more modular
- *         contract architecture. The upgrade separates the core protocol logic from
- *         staking and fee distribution mechanics. PushCoreV3 is primarily focused on
- *         storing and managing channel-related functionality.
+ * @notice PushCoreV3 upgrades PushCoreV2 with a modular architecture, separating core protocol
+ *         functions (channel creation, notification management, fee collection) from staking
+ *         and reward distribution. PushCoreV3 primarily focuses on managing channel-related
+ *         functionality.
  *
- * @dev PushCoreV2 handled all core protocol functionality, including channel management,
- *      fee collection, epoch management, and reward distribution. It also stored
- *      and managed `PROTOCOL_POOL_FEES`, which contributed to staking rewards.
- *      PushCoreV3 retains the core functionalities related to channel and notification
- *      management but offloads all staking-related functionality to a dedicated
- *      `PushStaking` contract.
+ * @dev While PushCoreV2 handled all protocol functions — including staking and rewards —
+ *      PushCoreV3 offloads staking-related tasks to a dedicated `PushStaking` contract,
+ *      retaining only channel and notification management.
  *
- *      PushCoreV3 includes 2 additional functions to interface with the PushStaking:
+ *      PushCoreV3 includes two key functions to interface with the new `PushStaking` contract:
  *      - `setPushStaking()`: Sets the address of the `PushStaking` contract.
- *      - `transferProtocolFees()`: Transfers protocol fees to the `PushStaking` contract
- *        for staking rewards distribution.
+ *      - `transferProtocolFees()`: Transfers protocol fees to `PushStaking` for reward distribution.
  */
 contract PushCoreV3 is
     Initializable,
@@ -804,19 +800,38 @@ contract PushCoreV3 is
     => STAKING INTERFACE FUNCTIONALTY <=
     *************** */
 
-    // TODO: add Natspec
+    /**
+     * @notice Sets the address of the PushStaking contract.
+     *
+     * @dev This function can only be called by the governance address. It assigns `_pushStakingAddress`
+     *      to `pushStakingAddress`, enabling PushCoreV3 to interact with the PushStaking contract.
+     *
+     * @param _pushStakingAddress       The address of the PushStaking contract to be set.
+     *
+     * @return bool                     Returns `true` if the address was successfully set.
+     */
     function setPushStaking(address _pushStakingAddress) external returns (bool) {
         require(msg.sender == governance, "PushCoreV2: caller is not the governance");
         pushStakingAddress = _pushStakingAddress;
+
         return true;
     }
 
-    // TODO: add Natspec
-    function transferProtocolFees(address _to, uint256 _amount) external {
+    /**
+     * @notice Transfers a specified amount of protocol fees to PushStaking. Ensures that only
+     *         the designated PushStaking contract can initiate the transfer. `_amount` must be less
+     *         than or equal to `PROTOCOL_POOL_FEES`.
+     *
+     * @dev This function is restricted to being called only by the `PushStaking` contract. It deducts
+     *      the specified `_amount` from `PROTOCOL_POOL_FEES` and transfers it to PushStaking.
+     *
+     * @param _amount                   The amount of protocol fees to transfer.
+     */
+    function transferProtocolFees(uint256 _amount) external {
         require(msg.sender == pushStakingAddress, "Only PushStaking can transfer fees");
         require(_amount <= PROTOCOL_POOL_FEES, "Insufficient fees");
 
         PROTOCOL_POOL_FEES -= _amount;
-        IERC20(PUSH_TOKEN_ADDRESS).transfer(_to, _amount);
+        IERC20(PUSH_TOKEN_ADDRESS).transfer(msg.sender, _amount);
     }
 }

@@ -572,7 +572,7 @@ contract PushStaking is IPushStaking, PushCoreStorageV1_5, PushCoreStorageV2, Pa
      */
     function _pullProtocolFees() internal {
         uint256 feesToTransfer = pushCoreV3.PROTOCOL_POOL_FEES();
-        pushCoreV3.transferProtocolFees(address(this), feesToTransfer);
+        pushCoreV3.transferProtocolFees(feesToTransfer);
 
         uint256 walletFeeAmount = feesToTransfer.mul(WALLET_FEE_PERCENTAGE).div(PERCENTAGE_DIVISOR);
         uint256 holderFeeAmount = feesToTransfer.sub(walletFeeAmount);
