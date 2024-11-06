@@ -14,6 +14,7 @@ contract EPNSCoreProxy is TransparentUpgradeableProxy {
         address _uniswapRouterAddress,
         address _lendingPoolProviderAddress,
         address _daiAddress,
+        address _pushStakingAddress,
         address _aDaiAddress,
         uint256 _referralCode
     )
@@ -23,13 +24,14 @@ contract EPNSCoreProxy is TransparentUpgradeableProxy {
             _logic,
             _governance,
             abi.encodeWithSignature(
-                "initialize(address,address,address,address,address,address,address,uint256)",
+                "initialize(address,address,address,address,address,address,address,address,uint256)",
                 _pushChannelAdmin,
                 _pushTokenAddress,
                 _wethAddress,
                 _uniswapRouterAddress,
                 _lendingPoolProviderAddress,
                 _daiAddress,
+                _pushStakingAddress,
                 _aDaiAddress,
                 _referralCode
             )

@@ -116,13 +116,13 @@ contract PushCoreV3 is
         pushChannelAdmin = _pushChannelAdmin;
         governance = _pushChannelAdmin; // Will be changed on-Chain governance Address later
         daiAddress = _daiAddress;
+        pushStakingAddress = _pushStakingAddress;
         aDaiAddress = _aDaiAddress;
         WETH_ADDRESS = _wethAddress;
         REFERRAL_CODE = _referralCode;
         PUSH_TOKEN_ADDRESS = _pushTokenAddress;
         UNISWAP_V2_ROUTER = _uniswapRouterAddress;
         lendingPoolProviderAddress = _lendingPoolProviderAddress;
-        pushStakingAddress = _pushStakingAddress;
         FEE_AMOUNT = 10 ether; // PUSH Amount that will be charged as Protocol Pool Fees
         MIN_POOL_CONTRIBUTION = 50 ether; // Channel's poolContribution should never go below MIN_POOL_CONTRIBUTION
         ADD_CHANNEL_MIN_FEES = 50 ether; // can never be below MIN_POOL_CONTRIBUTION
