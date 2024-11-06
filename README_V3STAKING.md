@@ -51,10 +51,6 @@ npm install
 ```sh
 npx hardhat test
 ```
-OR
-```sh
-forge test
-```
 ---
 
 ## Resources
